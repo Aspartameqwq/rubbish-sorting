@@ -3,33 +3,21 @@
 #include "project_config.h"
 #include "tim.h"
 
-#if SERVO_MAX_ANGLE_DEG <= SERVO_MIN_ANGLE_DEG
-#error "Servo angle range must be positive"
+#if (SERVO_CENTER_ANGLE_DEG <= SERVO_MIN_ANGLE_DEG) || \
+    (SERVO_CENTER_ANGLE_DEG >= SERVO_MAX_ANGLE_DEG)
+#error "Servo center angle must be strictly inside the configured angle range"
 #endif
 
-#if SERVO_MAX_PULSE_US <= SERVO_MIN_PULSE_US
-#error "Servo pulse range must be positive"
-#endif
-
-#if (SERVO_CENTER_PULSE_US < SERVO_MIN_PULSE_US) || \
-    (SERVO_CENTER_PULSE_US > SERVO_MAX_PULSE_US)
-#error "Servo center pulse must be within the configured pulse range"
+#if (SERVO_CENTER_PULSE_US <= SERVO_MIN_PULSE_US) || \
+    (SERVO_CENTER_PULSE_US >= SERVO_MAX_PULSE_US)
+#error "Servo center pulse must be strictly inside the configured pulse range"
 #endif
 
 static bool s_initialized;
 static bool s_enabled;
-static uint16_t s_angle_deg;
+static bool s_angle_valid;
+static uint16_t s_target_angle_deg;
 static uint16_t s_pulse_us;
-
-static uint16_t Servo_AngleFromPulse(uint16_t pulse_us)
-{
-    const uint32_t pulse_span = (uint32_t)SERVO_MAX_PULSE_US - SERVO_MIN_PULSE_US;
-    const uint32_t angle_span = (uint32_t)SERVO_MAX_ANGLE_DEG - SERVO_MIN_ANGLE_DEG;
-    const uint32_t pulse_offset = (uint32_t)pulse_us - SERVO_MIN_PULSE_US;
-    const uint32_t angle_offset = (pulse_offset * angle_span + (pulse_span / 2U)) / pulse_span;
-
-    return (uint16_t)((uint32_t)SERVO_MIN_ANGLE_DEG + angle_offset);
-}
 
 ServoStatus Servo_Init(void)
 {
@@ -52,8 +40,9 @@ ServoStatus Servo_Init(void)
         return SERVO_STATUS_HAL_ERROR;
     }
 
-    s_angle_deg = SERVO_CENTER_ANGLE_DEG;
+    s_target_angle_deg = SERVO_CENTER_ANGLE_DEG;
     s_pulse_us = SERVO_CENTER_PULSE_US;
+    s_angle_valid = true;
     s_enabled = true;
     s_initialized = true;
     return SERVO_STATUS_OK;
@@ -70,6 +59,12 @@ ServoStatus Servo_SetAngle(uint16_t angle_deg)
     {
         return SERVO_STATUS_NOT_INITIALIZED;
     }
+#if (SERVO_MIN_ANGLE_DEG > 0U)
+    if (angle_deg < SERVO_MIN_ANGLE_DEG)
+    {
+        return SERVO_STATUS_INVALID_ARGUMENT;
+    }
+#endif
     if (angle_deg > SERVO_MAX_ANGLE_DEG)
     {
         return SERVO_STATUS_INVALID_ARGUMENT;
@@ -80,7 +75,11 @@ ServoStatus Servo_SetAngle(uint16_t angle_deg)
     pulse_offset = (((uint32_t)angle_deg - SERVO_MIN_ANGLE_DEG) * pulse_span) / angle_span;
     pulse_us = (uint16_t)((uint32_t)SERVO_MIN_PULSE_US + pulse_offset);
 
-    return Servo_SetPulseUs(pulse_us);
+    __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, pulse_us);
+    s_target_angle_deg = angle_deg;
+    s_pulse_us = pulse_us;
+    s_angle_valid = true;
+    return SERVO_STATUS_OK;
 }
 
 ServoStatus Servo_SetPulseUs(uint16_t pulse_us)
@@ -97,18 +96,23 @@ ServoStatus Servo_SetPulseUs(uint16_t pulse_us)
 
     __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, pulse_us);
     s_pulse_us = pulse_us;
-    s_angle_deg = Servo_AngleFromPulse(pulse_us);
+    s_angle_valid = false;
     return SERVO_STATUS_OK;
 }
 
 uint16_t Servo_GetAngle(void)
 {
-    return s_angle_deg;
+    return s_target_angle_deg;
 }
 
 uint16_t Servo_GetPulseUs(void)
 {
     return s_pulse_us;
+}
+
+bool Servo_IsAngleValid(void)
+{
+    return s_angle_valid;
 }
 
 bool Servo_IsInitialized(void)

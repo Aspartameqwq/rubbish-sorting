@@ -120,11 +120,7 @@ HC04Status HC04_Init(void)
 
     if (huart1.Init.BaudRate != HC04_BAUDRATE)
     {
-        huart1.Init.BaudRate = HC04_BAUDRATE;
-        if (HAL_UART_Init(&huart1) != HAL_OK)
-        {
-            return HC04_STATUS_HAL_ERROR;
-        }
+        return HC04_STATUS_CONFIGURATION_ERROR;
     }
 
     s_dma_half_event_count = 0U;
@@ -159,7 +155,8 @@ void HC04_Process(void)
     if (s_rx_active)
     {
         s_produced_total = HC04_SnapshotProducedTotal(&error_pending);
-        if ((uint32_t)(s_produced_total - s_consumer_total) >= HC04_RX_DMA_BUFFER_SIZE)
+        /* Unsigned subtraction remains valid across 32-bit wrap while occupancy stays bounded. */
+        if ((uint32_t)(s_produced_total - s_consumer_total) > HC04_RX_DMA_BUFFER_SIZE)
         {
             s_rx_overflow_count++;
             s_consumer_total = s_produced_total;

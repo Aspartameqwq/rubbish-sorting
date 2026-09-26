@@ -1,0 +1,13 @@
+# CMake build outputs
+/build/
+/cmake-build-*/
+*.elf
+*.hex
+*.bin
+*.map
+*.list
+*.o
+*.d
+
+# STM32CubeMX stores machine-specific paths here
+/.mxproject

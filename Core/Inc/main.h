@@ -57,6 +57,10 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define TB6600_DIR_Pin GPIO_PIN_12
+#define TB6600_DIR_GPIO_Port GPIOB
+#define TB6600_ENA_Pin GPIO_PIN_13
+#define TB6600_ENA_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
 

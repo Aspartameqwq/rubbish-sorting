@@ -39,6 +39,9 @@ target_include_directories(stm32cubemx INTERFACE
 target_sources(stm32cubemx INTERFACE
     ../../Core/Src/main.c
     ../../Core/Src/gpio.c
+    ../../Core/Src/dma.c
+    ../../Core/Src/tim.c
+    ../../Core/Src/usart.c
     ../../Core/Src/stm32f1xx_it.c
     ../../Core/Src/stm32f1xx_hal_msp.c
     ${STM32F1_HAL_DIR}/Src/stm32f1xx_hal_gpio_ex.c
@@ -54,6 +57,7 @@ target_sources(stm32cubemx INTERFACE
     ${STM32F1_HAL_DIR}/Src/stm32f1xx_hal_flash.c
     ${STM32F1_HAL_DIR}/Src/stm32f1xx_hal_flash_ex.c
     ${STM32F1_HAL_DIR}/Src/stm32f1xx_hal_exti.c
+    ${STM32F1_HAL_DIR}/Src/stm32f1xx_hal_uart.c
     ../../Core/Src/system_stm32f1xx.c
     ../../Core/Src/sysmem.c
     ../../Core/Src/syscalls.c
@@ -70,4 +74,3 @@ target_link_libraries(stm32cubemx INTERFACE
 if(CMAKE_C_STANDARD LESS 11)
     message(ERROR "Generated code requires C11 or higher")
 endif()
-

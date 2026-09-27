@@ -1,8 +1,58 @@
-# TB6600 wiring and first bring-up
+# Hardware wiring and first bring-up
 
-This is the project's single source of truth for physical TB6600 wiring and DIP selections. The topology and settings below are **SELECTED** from the user's plan and the photographed module label. Electrical compatibility and all physical behavior remain **PENDING** measurement; selected does not mean verified.
+This is the project's single source of truth for board-to-module wiring, TB6600 wiring and DIP selections. The topology and settings below are **SELECTED** from the user's plan and the photographed module label. Electrical compatibility and all physical behavior remain **PENDING** measurement; selected does not mean verified.
 
 The photo shows a PUFEIDE-marked TB6600 module labeled `DC 9–42VDC`. No separate schematic or exact-revision manufacturer manual is available. Board-specific input behavior is therefore not inferred beyond the visible terminal labels and switch table.
+
+## STM32F103C8T6 hardware resource and wiring table
+
+| STM32 pin / net | Peripheral / object | External device terminal | Function | Status |
+|---|---|---|---|---|
+| PA0 | TIM2_CH1 | Servo Signal | Pitch Servo PWM | SELECTED |
+| PA6 | TIM3_CH1 | TB6600 PUL+ | Yaw step pulse | SELECTED |
+| PB12 | GPIO Output | TB6600 DIR+ | Yaw direction | SELECTED |
+| PB13 | GPIO Output | TB6600 ENA+ | TB6600 enable | SELECTED |
+| PA9 | USART1_TX | HC-04 RX | UART transmit to module | SELECTED |
+| PA10 | USART1_RX | HC-04 TX | UART receive from module | SELECTED |
+| PA13 | SWDIO | J-Link SWDIO | Debug data | USER-REPORTED WORKING PREVIOUSLY; NOT RETESTED |
+| PA14 | SWCLK | J-Link SWCLK | Debug clock | USER-REPORTED WORKING PREVIOUSLY; NOT RETESTED |
+| STM32 GND | Ground | TB6600 PUL- | PUL signal return | SELECTED |
+| STM32 GND | Ground | TB6600 DIR- | DIR signal return | SELECTED |
+| STM32 GND | Ground | TB6600 ENA- | ENA signal return | SELECTED |
+
+This table records the selected connection plan; it does not assert that every lead, voltage, or signal has been measured on the current bench setup.
+
+## Servo wiring and supply
+
+| Servo lead | STM32 / supply connection | Status |
+|---|---|---|
+| Signal | PA0 / TIM2_CH1 | SELECTED |
+| GND | Control/system ground | SELECTED |
+| V+ | Separate regulated supply matching the exact Servo model | TO BE CONFIRMED |
+
+Do not power a high-current Servo from an STM32 GPIO or the 3.3 V rail. Confirm the Servo's rated supply voltage and stall/current requirement from its exact model documentation. Connect Servo ground to the control ground so the PWM signal has a shared reference; size the external supply for the Servo load.
+
+## HC-04 wiring and voltage
+
+| STM32 | HC-04 | Status |
+|---|---|---|
+| PA9 / USART1_TX | RX | SELECTED |
+| PA10 / USART1_RX | TX | SELECTED |
+| Control ground | GND | SELECTED |
+| Module VCC | Supply allowed by the exact module variant | TO BE CONFIRMED |
+
+Confirm the actual module's supply range and UART logic levels from its board markings or documentation. Do not infer that every board sold as HC-04 has the same regulator, level shifting, or pinout.
+
+## J-Link SWD wiring
+
+| J-Link signal | STM32F103C8T6 | Status |
+|---|---|---|
+| SWDIO | PA13 | USER-REPORTED WORKING PREVIOUSLY; NOT RETESTED |
+| SWCLK | PA14 | USER-REPORTED WORKING PREVIOUSLY; NOT RETESTED |
+| GND | GND | SELECTED |
+| VTref | Target logic-voltage reference | SELECTED |
+
+Keep PA13 and PA14 reserved for SWD. VTref is the target reference connection; do not use it as target power unless the J-Link and target documentation explicitly allow that wiring.
 
 ## STM32 to TB6600 signal terminals
 
@@ -144,3 +194,21 @@ Do these checks with the motor mechanically safe and the driver power disabled u
 | Noise immunity and motor rotation | PENDING |
 
 The Toshiba [TB6600HG bare-IC datasheet](https://toshiba.semicon-storage.com/info/docget.jsp?did=12780&prodName=TB6600HG) is not a specification for this commercial module's optocoupler input circuit.
+
+## Bench bring-up record
+
+Fill in **Measured** and **Result** only after performing each physical check. Until then, keep the result `PENDING`; firmware builds and host tests do not establish these values.
+
+| Check | Expected / acceptance target | Measured | Result |
+|---|---|---|---|
+| Servo PA0 PWM frame | 20 ms | — | PENDING |
+| Servo horizontal pulse | Around 1500 µs | — | PENDING |
+| Pitch horizontal | Platform is level at Pitch 0 mdeg | — | PENDING |
+| Pitch +5° | Correct documented positive direction, no binding | — | PENDING |
+| Pitch -5° | Correct opposite direction, no binding | — | PENDING |
+| PUL input current | At or below the 8 mA project gate | — | PENDING |
+| PUL active HIGH width | Around 10 µs | — | PENDING |
+| PUL 20 Hz command | Clean 20 Hz output at the selected input | — | PENDING |
+| DIR orientation | Matches logical FORWARD / REVERSE | — | PENDING |
+| ENA behavior | Powered TB6600 responds to enable/disable as expected | — | PENDING |
+| 1600 PUL pulses | Nominally one motor revolution if directly coupled and no steps are lost | — | PENDING |

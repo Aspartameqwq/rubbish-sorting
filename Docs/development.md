@@ -46,7 +46,10 @@ This is a historical snapshot of the preceding branch. Round 4 replaces `g_debug
 - The user regenerated CubeMX output. `.ioc` now lists `MX_TIM3_Init` in `ProjectManager.functionlistsort`; `main.c` calls it after `MX_USART1_UART_Init()` and before `App_Init()`. TIM3 PSC 71, ARR 49999, CH1 pulse 10, IRQ and PA6 mapping were reviewed. CubeMX's rewritten generated CMake file contained absolute local package paths and was excluded; the root build uses the reviewed package resolver.
 - Host simulation and target builds do not verify Servo calibration, TB6600 signal-return continuity, GPIO input current, 3.3 V logic recognition, actual pulse waveform, motor direction/movement or physical angle feedback. Those checks remain `PENDING`.
 
-## Round 4 verification record
+## Round 4 verification record (initial safety/smoothing change)
+
+This is the verification snapshot for the preceding PR #5 head, before the
+fractional-center follow-up below.
 
 - Host CTest: all three targets passed. Debug-control/raw-bench enabled: 40,760 checks; Release-control/raw-bench disabled: 40,725 checks; Yaw-limit variant: 40,731 checks; all reported 0 failures.
 - Coverage includes Pitch 0° horizontal coordinate and the observed 130° Servo anchor, fixed ±30° software limits, raw angle/pulse conversion checks, normal signed `PITCH` protocol parsing, Release raw-command rejection, 20 ms trajectory updates, 1000 ms midpoint interpolation, retarget continuity, 200–5000 ms response-time validation/latching, runtime Ozone tuning, command acknowledgement/clearing, and even/odd snapshot sequencing.
@@ -56,6 +59,18 @@ This is a historical snapshot of the preceding branch. Round 4 replaces `g_debug
 - `arm-none-eabi-nm` found the external `g_control_debug` symbol in both ELFs. This confirms linked global data, not a live Ozone/J-Link session.
 - `git diff --check` passed. The source audit found application Protocol/Diagnostics call through PitchAxis/YawAxis, with only the documented Debug-gated raw paths reaching low-level bench APIs.
 - Software builds and host tests do not verify physical Servo travel/direction, actual safe pulse range, board-level input/output levels, TB6600 waveform, motor movement or mechanical clearance. These remain `PENDING`.
+
+## Round 4 final review fix verification record
+
+- Host CTest: all four targets passed. Debug: 40,762 checks; Release: 40,727; Yaw-limit variant: 40,733; fractional-center variant: 40,772; all reported 0 failures.
+- The fractional-center target compiles with `PITCH_LEVEL_SERVO_MDEG=130500L` and verifies Pitch 0 maps to Servo 130500 mdeg, the center pulse remains 1500 µs, and pulse-to-angle conversion returns 130500 mdeg without integer-degree truncation.
+- ARM Debug build passed. RAM 2,600 bytes of 20 KB; Flash 33,260 bytes of 64 KB.
+- ARM Release build passed. RAM 2,608 bytes of 20 KB; Flash 18,780 bytes of 64 KB.
+- No new compiler warnings were observed. GNU ld reports the existing `LOAD segment with RWX permissions` warning.
+- `arm-none-eabi-nm` confirms `g_control_debug` remains in both ELFs; legacy `g_debug_state` and `g_debug_command` symbols remain absent.
+- Servo center comparisons and angle/pulse conversion use `SERVO_CENTER_ANGLE_MDEG`; the integer-degree compatibility macro is display-only. Application, Protocol, and Diagnostics have no direct low-level Servo actuation calls.
+- `Docs/wiring.md` now contains the system connection map and an unfilled physical measurement record. Ozone variable meanings and staged operating examples are documented in `Docs/debugging.md`.
+- All hardware measurements and live Ozone/J-Link checks remain `PENDING`; CubeMX peripherals were not changed in this follow-up.
 
 ## Static review checklist
 

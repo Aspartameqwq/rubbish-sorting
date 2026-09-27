@@ -23,7 +23,7 @@ Pitch and Servo use different coordinates. Pitch is relative to the platform's h
 servo target = pitch horizontal anchor + direction sign × Pitch target
 ```
 
-The current anchor is a mechanically observed initial value, not a precision Servo/linkage calibration. Positive direction is the current software selection; verify it with a secured mechanism before relying on it.
+The current anchor is a mechanically observed initial value, not a precision Servo/linkage calibration. `PITCH_LEVEL_SERVO_MDEG` retains full millidegree precision, so a later measured anchor such as 130250 or 130500 mdeg is not truncated during Servo center math. `SERVO_CENTER_ANGLE_DEG` is display/legacy integer-degree data only; control and pulse conversion use `SERVO_CENTER_ANGLE_MDEG`. The PWM output remains quantized to whole microseconds. Positive direction is the current software selection; verify it with a secured mechanism before relying on it.
 
 ## Pitch limits and actuation path
 

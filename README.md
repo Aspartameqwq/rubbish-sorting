@@ -5,7 +5,7 @@ STM32F103C8T6 下位机工程，使用 STM32CubeMX 6.12.0、STM32CubeF1 HAL v1.8
 ## 当前状态
 
 - CubeMX 已生成并核对：72 MHz 系统时钟、SWD、TIM2_CH1/PA0、USART1/PA9/PA10、DMA1_CH5 Circular RX、TIM3_CH1/PA6、PB12 DIR、PB13 ENA 和 TIM3 IRQ。
-- Pitch 轴以平台水平为 0°；已安装机构在 Servo 约 130° 时观察为水平，当前锚点映射到 1500 µs，属于机械观察的初始值，尚非精密标定。
+- Pitch 轴以平台水平为 0°；已安装机构在 Servo 约 130° 时观察为水平，当前锚点为 130000 mdeg 并映射到 1500 µs，属于机械观察的初始值，尚非精密标定。锚点支持后续 mdeg 级精调，Servo 中心计算不会截断小数角度；PWM 输出仍按整数 µs 量化。
 - Pitch 目标硬限制为相对水平 ±30°，不能通过构建选项或 Ozone 运行期关闭。目标变更使用默认 1000 ms、可调 200–5000 ms 的非阻塞线性响应。
 - Yaw 轴由 Stepper/TB6600 控制；选定 1600 PUL/rev，即 225 mdeg/PUL。绝对 Yaw 命令需要操作员设置手动零点；Stepper 计数仍是开环估计。
 - Pitch/Yaw target、commanded estimate、measured angle 已分离。当前无角度传感器，两个 measured 字段均无效。
@@ -61,7 +61,7 @@ CubeMX 会生成 `Core/*`、`.ioc` 和 `cmake/stm32cubemx/*`。仓库 root CMake
 
 - [架构与模块边界](Docs/architecture.md)
 - [硬件资源和 CubeMX 配置](Docs/hardware.md)
-- [TB6600 唯一接线主表与首次调试](Docs/wiring.md)
+- [硬件接线主表与首次调试](Docs/wiring.md)
 - [串口命令协议](Docs/protocol.md)
 - [TB6600 驱动](Docs/tb6600.md)
 - [Stepper 控制与 profile](Docs/stepper-control.md)

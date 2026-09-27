@@ -55,6 +55,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     startup_stm32f103xb.s
     ${STM32CUBE_F1_HAL_SOURCES}
     App/Src/app.c
+    Platform/Src/system_time.c
     BSP/Src/hc04.c
     BSP/Src/servo.c
     BSP/Src/tb6600.c
@@ -75,6 +76,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     Control/Inc
     Diagnostics/Inc
     Motion/Inc
+    Platform/Inc
     Protocol/Inc
     ${STM32CUBE_F1_INCLUDE_DIRS}
 )
@@ -86,6 +88,8 @@ target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
     $<$<CONFIG:Debug>:DEBUG>
     $<$<CONFIG:Debug>:DEBUG_CONTROL_ENABLE=1>
     $<$<NOT:$<CONFIG:Debug>>:DEBUG_CONTROL_ENABLE=0>
+    $<$<CONFIG:Debug>:RAW_BENCH_COMMANDS_ENABLE=1>
+    $<$<NOT:$<CONFIG:Debug>>:RAW_BENCH_COMMANDS_ENABLE=0>
 )
 
 # Add linked libraries.

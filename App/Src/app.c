@@ -3,6 +3,7 @@
 #include "debug_state.h"
 #include "hc04.h"
 #include "pitch_axis.h"
+#include "system_time.h"
 #include "protocol.h"
 #include "servo.h"
 #include "stepper.h"
@@ -50,15 +51,18 @@ void App_Init(void)
 
 void App_Process(void)
 {
+    const uint32_t now_ms = SystemTime_GetMs();
+
     if (!s_init_attempted)
     {
         return;
     }
 
     HC04_Process();
+    PitchAxis_Process(now_ms);
     YawAxis_Process();
     Protocol_Process();
-    Debug_Process(TB6600_GetTickMs(), s_health_flags);
+    Debug_Process(now_ms, s_health_flags);
 }
 
 AppHealthFlags App_GetHealthFlags(void)

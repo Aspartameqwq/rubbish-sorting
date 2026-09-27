@@ -2,122 +2,143 @@
 
 ## Build and load
 
-Build the **Debug** preset and point SEGGER Ozone at the ELF with DWARF symbols:
+Build the **Debug** preset and open the ELF with DWARF symbols in SEGGER Ozone:
 
 ```text
 build/Debug/rubbish-sorting.elf
 ```
 
-Create/select a device session for STM32F103C8, use the J-Link SWD interface, and load that ELF as the application image. Keep the Debug configuration's compiler-generated symbols; do not use a stripped Release ELF for this Watch workflow. The checked build verifies the firmware image and symbols, not J-Link connection or physical motion.
+Use a J-Link SWD session for STM32F103C8T6. The Debug ELF exposes the single Watch object `g_control_debug`. SEGGER's [Ozone User Manual (UM08025)](https://www.segger.com/downloads/jlink) and [Watch-window expression guidance](https://kb.segger.com/Add_Expressions_to_the_Watch_Window) describe the relevant setup.
 
-SEGGER's [Ozone User Manual (UM08025)](https://www.segger.com/downloads/jlink) is the primary setup reference. Ozone Watch can display global ELF symbols and expressions; see SEGGER's [Watch-window expression guidance](https://kb.segger.com/Add_Expressions_to_the_Watch_Window).
+## Recommended Watch expressions
 
-## Recommended Watch variables
-
-Add these public expressions rather than searching private `static` module variables:
+Add these fields from `Config/control_debug_config.h`:
 
 ```text
-g_debug_state.heartbeat
-g_debug_state.tick_ms
-g_debug_state.app_health_flags
+g_control_debug.state.snapshot_seq
+g_control_debug.state.heartbeat
+g_control_debug.state.tick_ms
+g_control_debug.state.app_health_flags
+g_control_debug.state.last_debug_command
+g_control_debug.state.last_debug_result
 
-g_debug_state.pitch.target_mdeg
-g_debug_state.pitch.commanded_mdeg
-g_debug_state.pitch.measured_mdeg
-g_debug_state.pitch.measurement_valid
-g_debug_state.pitch.pulse_us
-g_debug_state.pitch.servo_enabled
-g_debug_state.pitch.calibration_valid
-g_debug_state.pitch.soft_limit_enabled
-g_debug_state.pitch.soft_limit_min_mdeg
-g_debug_state.pitch.soft_limit_max_mdeg
-g_debug_state.pitch.limit_reject_count
-g_debug_state.pitch.raw_pulse_mode
-g_debug_state.pitch.status
+g_control_debug.state.pitch.target_mdeg
+g_control_debug.state.pitch.commanded_mdeg
+g_control_debug.state.pitch.servo_target_mdeg
+g_control_debug.state.pitch.servo_pulse_us
+g_control_debug.state.pitch.measured_mdeg
+g_control_debug.state.pitch.measurement_valid
+g_control_debug.state.pitch.moving
+g_control_debug.state.pitch.response_time_ms
+g_control_debug.state.pitch.active_response_time_ms
+g_control_debug.state.pitch.trajectory_elapsed_ms
+g_control_debug.state.pitch.soft_limit_min_mdeg
+g_control_debug.state.pitch.soft_limit_max_mdeg
+g_control_debug.state.pitch.limit_reject_count
+g_control_debug.state.pitch.tuning_reject_count
+g_control_debug.state.pitch.status
 
-g_debug_state.yaw.target_mdeg
-g_debug_state.yaw.quantized_target_mdeg
-g_debug_state.yaw.commanded_mdeg
-g_debug_state.yaw.measured_mdeg
-g_debug_state.yaw.measurement_valid
-g_debug_state.yaw.commanded_position_pulses
-g_debug_state.yaw.zero_offset_pulses
-g_debug_state.yaw.remaining_pulses
-g_debug_state.yaw.pulse_frequency_hz
-g_debug_state.yaw.stepper_state
-g_debug_state.yaw.enabled
-g_debug_state.yaw.reference_state
-g_debug_state.yaw.soft_limit_enabled
-g_debug_state.yaw.soft_limit_min_mdeg
-g_debug_state.yaw.soft_limit_max_mdeg
-g_debug_state.yaw.limit_reject_count
-g_debug_state.yaw.status
+g_control_debug.state.yaw.target_mdeg
+g_control_debug.state.yaw.quantized_target_mdeg
+g_control_debug.state.yaw.commanded_mdeg
+g_control_debug.state.yaw.measured_mdeg
+g_control_debug.state.yaw.commanded_position_pulses
+g_control_debug.state.yaw.zero_offset_pulses
+g_control_debug.state.yaw.remaining_pulses
+g_control_debug.state.yaw.pulse_frequency_hz
+g_control_debug.state.yaw.stepper_state
+g_control_debug.state.yaw.enabled
+g_control_debug.state.yaw.reference_state
 
-g_debug_command
+g_control_debug.tuning.pitch_response_time_ms
+g_control_debug.command.request_seq
+g_control_debug.command.applied_seq
+g_control_debug.command.command
+g_control_debug.command.result
 ```
 
-`heartbeat` increments on each 20 ms snapshot; a frozen value can indicate that main-loop processing is not reaching Diagnostics. `tick_ms` and the health/status fields give context. The snapshot is a mirror only: never edit `g_debug_state` to control hardware.
+Angles are signed integer millidegrees. Pitch `0` means platform horizontal; `+5000` and `-5000` request ±5° around horizontal. Servo `130000 mdeg` is the current mechanically observed horizontal anchor. `commanded_mdeg` is the latest software command, not measured platform position. Pitch and Yaw `measured_mdeg` remain `INT32_MIN` with `measurement_valid=0`.
 
-Angles use signed integer mdeg. `measured_mdeg` is `INT32_MIN` (`-2147483648`) and `measurement_valid=0` until sensor feedback is implemented. Pitch commanded angle is derived from the configured PWM mapping; Yaw commanded angle is derived from counted pulses relative to its reference. Neither is a measured mechanical angle. `soft_limit_enabled=0` means the configured placeholder range is not active or calibrated protection.
+Telemetry refreshes every 20 ms. `snapshot_seq` is odd while a snapshot is being copied and even when stable. To validate a Watch sample, note the sequence, read the fields, then read the sequence again; accept the sample only if both values match and are even. `heartbeat` increments once per completed snapshot.
 
-## Debug command mailbox
+## Pitch examples
 
-`g_debug_command` is the only Ozone control input. Do not write Servo CCR, Stepper private state, timer registers, GPIO registers, or the telemetry mirror.
+Use small initial movements and observe mechanism clearance:
 
-Submit one request at a time:
+```text
+Horizontal:  pitch_target_mdeg = 0
+Small side A: pitch_target_mdeg = 5000
+Return:       pitch_target_mdeg = 0
+Small side B: pitch_target_mdeg = -5000
+Return:       pitch_target_mdeg = 0
+```
+
+The enforced Pitch range is `-30000` through `+30000` mdeg. Requests outside it return `DEBUG_RESULT_LIMIT`. Do not begin hardware checks at the endpoints. The software bound does not verify real mechanical clearance.
+
+## Response-time tuning
+
+The default response is 1000 ms; the accepted range is 200–5000 ms. In a Debug build, Ozone may write the next-move setting directly:
+
+```text
+g_control_debug.tuning.pitch_response_time_ms = 1200
+```
+
+The firmware validates this every main-loop pass. An invalid value is replaced with the last accepted value and increments `pitch.tuning_reject_count`. A currently active move keeps the duration it latched when its target was accepted; a new setting applies to the next Pitch target. Software limits are compile-time configuration and are not writable Ozone tuning values.
+
+## Single-request command mailbox
+
+`g_control_debug.command` is the only Ozone command input. Do not edit `g_control_debug.state`, Servo CCR, Stepper private state, timer registers or GPIO registers. Submit one request at a time:
 
 1. Write command parameters.
-2. Write `command` using the `DEBUG_CMD_*` value from `Diagnostics/Inc/debug_state.h`.
+2. Write `command` using a `DEBUG_CMD_*` value.
 3. As the final write, increment `request_seq`.
-4. Wait until `applied_seq == request_seq`, then inspect `result` before sending another request.
+4. Wait until `applied_seq == request_seq`; inspect `result` and `state.last_debug_result` before sending another request.
 
-Example: request Pitch 45°:
+For a +5° Pitch target:
 
 ```text
-g_debug_command.pitch_target_mdeg = 45000
-g_debug_command.command = DEBUG_CMD_SET_PITCH_MDEG   // enum value 1
-g_debug_command.request_seq = g_debug_command.request_seq + 1
+g_control_debug.command.pitch_target_mdeg = 5000
+g_control_debug.command.command = DEBUG_CMD_SET_PITCH_MDEG
+g_control_debug.command.request_seq = g_control_debug.command.request_seq + 1
 ```
 
-The CPU checks the sequence each main-loop iteration, copies the request payload after observing the sequence change, calls the axis API, writes `result`, then acknowledges by copying the request sequence to `applied_seq`. Updating the sequence last prevents the CPU from acting on incomplete parameters. Do not queue a second request before the first is acknowledged.
-
-Supported command values are:
+After processing, firmware writes `result`, clears `command.command` to `DEBUG_CMD_NONE`, and finally updates `applied_seq`. `state.last_debug_command` and `state.last_debug_result` preserve the completed command. Do not increment the sequence again until the current request is acknowledged.
 
 | Value | Command | Parameters / behavior |
 |---:|---|---|
-| 1 | `DEBUG_CMD_SET_PITCH_MDEG` | `pitch_target_mdeg`; PitchAxis checks logical range and active soft limits |
-| 2 | `DEBUG_CMD_SET_PITCH_PULSE_US` | `pitch_pulse_us`; raw calibration command bounded by configured pulse min/max, invalidates angle telemetry |
-| 3 | `DEBUG_CMD_SET_YAW_MDEG` | `yaw_target_mdeg`, `yaw_frequency_hz`; requires manual reference, enabled idle Stepper and accepted limits |
-| 4 | `DEBUG_CMD_SET_BOTH_MDEG` | Pitch and Yaw targets plus Yaw frequency; prevalidates both; a hardware failure after the Pitch write may return `DEBUG_RESULT_PARTIAL` |
-| 5 | `DEBUG_CMD_SET_YAW_ZERO` | Save current idle Stepper count as manual zero; does not move the shaft or rewrite the Stepper count |
-| 6 | `DEBUG_CMD_YAW_ENABLE` | Enable the Yaw Stepper/TB6600 interface |
-| 7 | `DEBUG_CMD_YAW_DISABLE` | Request disable, finishing an active normal pulse first |
-| 8 | `DEBUG_CMD_YAW_STOP` | Graceful stop at the next complete pulse boundary |
+| 1 | `DEBUG_CMD_SET_PITCH_MDEG` | Relative Pitch target; always checked against ±30° |
+| 2 | `DEBUG_CMD_SET_PITCH_PULSE_US` | Bench pulse request; converted back to Pitch and checked against the same hard limit |
+| 3 | `DEBUG_CMD_SET_YAW_MDEG` | Yaw target and frequency; requires manual reference and enabled idle Stepper |
+| 4 | `DEBUG_CMD_SET_BOTH_MDEG` | Prevalidates Pitch and Yaw requests before scheduling both |
+| 5 | `DEBUG_CMD_SET_YAW_ZERO` | Save current stationary Stepper count as manual zero; does not move the shaft |
+| 6 | `DEBUG_CMD_YAW_ENABLE` | Enable the Stepper/TB6600 interface |
+| 7 | `DEBUG_CMD_YAW_DISABLE` | Request Stepper disable |
+| 8 | `DEBUG_CMD_YAW_STOP` | Graceful stop at a complete pulse boundary |
+| 9 | `DEBUG_CMD_SET_PITCH_RESPONSE_MS` | Set the response time for the next Pitch target |
 
-`result` values are declared as `DEBUG_RESULT_*` in the header. `DEBUG_RESULT_OK` is 0; other results report disabled control, invalid/unknown command, uninitialized axis, missing reference, limit rejection, busy/disabled Yaw, driver error or a partial `SET_BOTH_MDEG` result. The telemetry `pitch.status` and `yaw.status` fields use their respective `PITCH_AXIS_STATUS_*` and `YAW_AXIS_STATUS_*` enum values. Limit rejection counts and each axis's last status are copied into telemetry.
+For command 9, write `pitch_response_time_ms` in the command block before incrementing the request sequence. Valid values are 200–5000 ms.
 
-Before `DEBUG_CMD_SET_YAW_ZERO`, physically align the mechanism to the intended reference while it is stopped and mechanically safe. MCU reset or `Stepper commanded_position_pulses == 0` is not a physical home. Yaw absolute commands are rejected until a manual reference has been set.
+Before `DEBUG_CMD_SET_YAW_ZERO`, physically align the Yaw mechanism to its chosen zero while stopped and safe. MCU reset or a zero pulse count is not physical homing.
 
-## Build policy and symbols
+## Protocol bench-command gate and build policy
 
-Telemetry symbols are included in every firmware configuration. Command injection is compiled on only for the Debug preset (`DEBUG_CONTROL_ENABLE=1`); Release and other non-Debug presets set it to 0. A changed `request_seq` in a non-Debug build is acknowledged with `DEBUG_RESULT_DISABLED` and cannot move an actuator.
+The normal text command is `PITCH <signed-mdeg>`, such as `PITCH 0` or `PITCH -5000`. `SERVO <degrees>`, `SERVO_US <pulse>` and raw `STEPPER ENABLE/MOVE` commands are bench interfaces. They are enabled only in Debug and their Pitch paths still enforce the Pitch hard limit. `STEPPER DISABLE` and `STEPPER STOP` remain available as stop/recovery commands. Release returns `ERR` for bench-only protocol commands.
 
-Confirm the ELF contains the two external symbols:
+The global `g_control_debug` symbol exists in Debug and Release ELFs. Debug command injection and `RAW_BENCH_COMMANDS_ENABLE` are enabled only for the Debug preset; Release acknowledges mailbox requests as disabled and compiles out raw bench actuation paths.
+
+Verify the external symbol with:
 
 ```powershell
-arm-none-eabi-nm build/Debug/rubbish-sorting.elf | Select-String 'g_debug_state|g_debug_command'
+arm-none-eabi-nm build/Debug/rubbish-sorting.elf | Select-String 'g_control_debug'
 ```
 
-Ozone watches named globals from ELF debug information; `nm` independently verifies external linkage. `nm` presence does not prove an Ozone/J-Link session or hardware action.
+`nm` confirms link-visible ELF data only; it does not confirm a J-Link session or physical movement.
 
-## Bring-up boundaries
+## Hardware and CubeMX boundary
 
-- Keep the TB6600 24 V stage disconnected during the multi-pulse GPIO input-current screen described in [wiring.md](wiring.md).
-- Keep the mechanism safe and clear before enabling the driver or requesting motion.
-- `SERVO_US` and `STEPPER MOVE` text commands are raw bench interfaces; direct `STEPPER MOVE` bypasses YawAxis reference and software-limit policy.
-- Debug commands call PitchAxis/YawAxis APIs. Debug does not bypass angle checks through raw actuator registers.
-- Physical Servo calibration, electrical input current/logic recognition, motor direction, shaft angle and sensor feedback remain pending until measured.
+- Keep the mechanism secured and clear before any Ozone or UART motion request.
+- Start at horizontal, then test ±5°; verify direction and clearance before trying ±10° or more.
+- Software limits are command guards, not physical stops. Servo calibration and mechanism travel remain bench work.
+- `.ioc` and `Core/*` are CubeMX-owned. After user regeneration, review `MX_TIM3_Init()` order and generated-source changes; do not commit machine-local package paths from generated CMake files.
 
-## CubeMX generation provenance
-
-ST's [STM32CubeMX User Manual UM1718](https://www.st.com/resource/en/user_manual/um1718-stm32cubemx-for-stm32-configuration-and-initialization-c-code-generation-stmicroelectronics.pdf) describes generating project code from the saved configuration. This repository treats `.ioc` and `Core/*` as CubeMX-owned; after regeneration, review `MX_TIM3_Init()` ordering and generated-source changes, but do not commit CubeMX's machine-local package paths from `cmake/stm32cubemx/CMakeLists.txt`.
+ST's [STM32CubeMX User Manual UM1718](https://www.st.com/resource/en/user_manual/um1718-stm32cubemx-for-stm32-configuration-and-initialization-c-code-generation-stmicroelectronics.pdf) describes generation from the saved `.ioc` configuration.

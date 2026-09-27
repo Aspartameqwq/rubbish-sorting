@@ -17,7 +17,7 @@ set(HOST_TEST_SOURCES
     ../../Protocol/Src/protocol.c
 )
 
-function(configure_host_test_target target debug_control_enabled)
+function(configure_host_test_target target debug_control_enabled raw_bench_enabled)
     add_executable(${target} ${HOST_TEST_SOURCES})
     target_include_directories(${target} PRIVATE
         stubs
@@ -30,20 +30,20 @@ function(configure_host_test_target target debug_control_enabled)
         ../../Protocol/Inc
     )
     target_compile_features(${target} PRIVATE c_std_11)
-    target_compile_definitions(${target} PRIVATE DEBUG_CONTROL_ENABLE=${debug_control_enabled})
+    target_compile_definitions(${target} PRIVATE
+        DEBUG_CONTROL_ENABLE=${debug_control_enabled}
+        RAW_BENCH_COMMANDS_ENABLE=${raw_bench_enabled}
+    )
     if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
         target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic -Werror)
     endif()
 endfunction()
 
-configure_host_test_target(firmware_host_tests 1)
-configure_host_test_target(firmware_host_tests_release_control 0)
-configure_host_test_target(firmware_host_tests_limits 1)
+configure_host_test_target(firmware_host_tests 1 1)
+configure_host_test_target(firmware_host_tests_release_control 0 0)
+configure_host_test_target(firmware_host_tests_limits 1 1)
 target_compile_definitions(firmware_host_tests_limits PRIVATE
     AXIS_LIMIT_TESTS=1
-    PITCH_SOFT_LIMIT_VALID=1
-    PITCH_SOFT_MIN_MDEG=10000L
-    PITCH_SOFT_MAX_MDEG=260000L
     YAW_SOFT_LIMIT_VALID=1
     YAW_SOFT_MIN_MDEG=-90000L
     YAW_SOFT_MAX_MDEG=90000L

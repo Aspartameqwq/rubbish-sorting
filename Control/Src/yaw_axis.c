@@ -6,17 +6,6 @@
 
 #include <limits.h>
 
-#if (YAW_SOFT_LIMIT_VALID != 0U) && (YAW_SOFT_LIMIT_VALID != 1U)
-#error "YAW_SOFT_LIMIT_VALID must be 0 or 1"
-#endif
-#if (YAW_SOFT_LIMIT_VALID != 0U) && (YAW_SOFT_MIN_MDEG >= YAW_SOFT_MAX_MDEG)
-#error "Yaw software limits must have MIN < MAX"
-#endif
-#if (YAW_PULSES_PER_REV == 0U) || (ANGLE_MDEG_PER_REV <= 0L) || \
-    ((ANGLE_MDEG_PER_REV % YAW_PULSES_PER_REV) != 0U)
-#error "Yaw pulses per revolution must divide the millidegree revolution exactly"
-#endif
-
 #define YAW_MDEG_PER_PULSE (ANGLE_MDEG_PER_REV / YAW_PULSES_PER_REV)
 
 static bool s_initialized;
@@ -34,6 +23,13 @@ static void YawAxis_RecordStatus(YawAxisStatus status)
     {
         s_limit_reject_count++;
     }
+}
+
+static void YawAxis_InvalidateReference(void)
+{
+    s_reference_state = YAW_REFERENCE_INVALID;
+    s_target_mdeg = INT32_MIN;
+    s_quantized_target_mdeg = INT32_MIN;
 }
 
 static YawAxisStatus YawAxis_MapStepperStatus(StepperStatus status)
@@ -139,6 +135,8 @@ YawAxisStatus YawAxis_Disable(void)
         return YAW_AXIS_STATUS_NOT_INITIALIZED;
     }
     status = YawAxis_MapStepperStatus(Stepper_Disable());
+    /* Without feedback, a disabled or faulted axis may have moved by hand. */
+    YawAxis_InvalidateReference();
     YawAxis_RecordStatus(status);
     return status;
 }
@@ -168,6 +166,10 @@ YawAxisStatus YawAxis_ValidateTargetMilliDeg(int32_t target_mdeg,
     {
         return YAW_AXIS_STATUS_BUSY;
     }
+    if (Stepper_GetState() == STEPPER_STATE_FAULT)
+    {
+        return YAW_AXIS_STATUS_DRIVER_ERROR;
+    }
     if (!Stepper_IsEnabled())
     {
         return YAW_AXIS_STATUS_DISABLED;
@@ -176,13 +178,15 @@ YawAxisStatus YawAxis_ValidateTargetMilliDeg(int32_t target_mdeg,
     {
         return YAW_AXIS_STATUS_INVALID_ARGUMENT;
     }
-#if (YAW_SOFT_LIMIT_VALID == 1U)
-    if ((target_mdeg < YAW_SOFT_MIN_MDEG) || (target_mdeg > YAW_SOFT_MAX_MDEG) ||
-        (quantized_mdeg < YAW_SOFT_MIN_MDEG) || (quantized_mdeg > YAW_SOFT_MAX_MDEG))
+    if ((target_mdeg < YAW_CABLE_LIMIT_MIN_MDEG) ||
+        (target_mdeg > YAW_CABLE_LIMIT_MAX_MDEG) ||
+        (quantized_mdeg < YAW_CABLE_LIMIT_MIN_MDEG) ||
+        (quantized_mdeg > YAW_CABLE_LIMIT_MAX_MDEG) ||
+        (relative_pulses < YAW_CABLE_LIMIT_MIN_PULSES) ||
+        (relative_pulses > YAW_CABLE_LIMIT_MAX_PULSES))
     {
         return YAW_AXIS_STATUS_LIMIT;
     }
-#endif
 
     absolute_target = (int64_t)s_zero_offset_pulses + relative_pulses;
     if ((absolute_target < INT32_MIN) || (absolute_target > INT32_MAX))
@@ -229,22 +233,93 @@ YawAxisStatus YawAxis_SetTargetMilliDeg(int32_t target_mdeg,
     return status;
 }
 
-YawAxisStatus YawAxis_SetCurrentPositionAsZero(void)
+YawAxisStatus YawAxis_MoveRelativePulses(int32_t delta_pulses,
+                                         uint32_t pulse_frequency_hz)
 {
+    int64_t current_relative_pulses;
+    int64_t target_relative_pulses;
+    int64_t target_mdeg;
+    YawAxisStatus status;
+
     if (!s_initialized)
     {
         YawAxis_RecordStatus(YAW_AXIS_STATUS_NOT_INITIALIZED);
         return YAW_AXIS_STATUS_NOT_INITIALIZED;
+    }
+    if (s_reference_state == YAW_REFERENCE_INVALID)
+    {
+        YawAxis_RecordStatus(YAW_AXIS_STATUS_NOT_REFERENCED);
+        return YAW_AXIS_STATUS_NOT_REFERENCED;
+    }
+    if ((pulse_frequency_hz < TB6600_STEP_FREQ_MIN_HZ) ||
+        (pulse_frequency_hz > TB6600_STEP_FREQ_MAX_HZ))
+    {
+        YawAxis_RecordStatus(YAW_AXIS_STATUS_INVALID_ARGUMENT);
+        return YAW_AXIS_STATUS_INVALID_ARGUMENT;
+    }
+    if (Stepper_GetState() == STEPPER_STATE_FAULT)
+    {
+        YawAxis_RecordStatus(YAW_AXIS_STATUS_DRIVER_ERROR);
+        return YAW_AXIS_STATUS_DRIVER_ERROR;
     }
     if (Stepper_IsBusy())
     {
         YawAxis_RecordStatus(YAW_AXIS_STATUS_BUSY);
         return YAW_AXIS_STATUS_BUSY;
     }
-    if (Stepper_GetState() == STEPPER_STATE_FAULT)
+    if (!Stepper_IsEnabled())
+    {
+        YawAxis_RecordStatus(YAW_AXIS_STATUS_DISABLED);
+        return YAW_AXIS_STATUS_DISABLED;
+    }
+
+    current_relative_pulses = (int64_t)Stepper_GetCommandedPosition() -
+                              s_zero_offset_pulses;
+    target_relative_pulses = current_relative_pulses + delta_pulses;
+    if ((target_relative_pulses < YAW_CABLE_LIMIT_MIN_PULSES) ||
+        (target_relative_pulses > YAW_CABLE_LIMIT_MAX_PULSES))
+    {
+        YawAxis_RecordStatus(YAW_AXIS_STATUS_LIMIT);
+        return YAW_AXIS_STATUS_LIMIT;
+    }
+
+    target_mdeg = target_relative_pulses * YAW_MDEG_PER_PULSE;
+    if ((target_mdeg < INT32_MIN) || (target_mdeg > INT32_MAX))
+    {
+        YawAxis_RecordStatus(YAW_AXIS_STATUS_INVALID_ARGUMENT);
+        return YAW_AXIS_STATUS_INVALID_ARGUMENT;
+    }
+
+    status = YawAxis_MapStepperStatus(Stepper_MoveSteps(delta_pulses,
+                                                         pulse_frequency_hz));
+    if (status == YAW_AXIS_STATUS_OK)
+    {
+        s_target_mdeg = (int32_t)target_mdeg;
+        s_quantized_target_mdeg = (int32_t)target_mdeg;
+    }
+    YawAxis_RecordStatus(status);
+    return status;
+}
+
+YawAxisStatus YawAxis_SetCurrentPositionAsZero(void)
+{
+    StepperState stepper_state;
+
+    if (!s_initialized)
+    {
+        YawAxis_RecordStatus(YAW_AXIS_STATUS_NOT_INITIALIZED);
+        return YAW_AXIS_STATUS_NOT_INITIALIZED;
+    }
+    stepper_state = Stepper_GetState();
+    if (stepper_state == STEPPER_STATE_FAULT)
     {
         YawAxis_RecordStatus(YAW_AXIS_STATUS_DRIVER_ERROR);
         return YAW_AXIS_STATUS_DRIVER_ERROR;
+    }
+    if (stepper_state != STEPPER_STATE_DISABLED)
+    {
+        YawAxis_RecordStatus(YAW_AXIS_STATUS_INVALID_STATE);
+        return YAW_AXIS_STATUS_INVALID_STATE;
     }
 
     s_zero_offset_pulses = Stepper_GetCommandedPosition();
@@ -357,17 +432,80 @@ YawReferenceState YawAxis_GetReferenceState(void)
 
 bool YawAxis_IsSoftLimitEnabled(void)
 {
-    return YAW_SOFT_LIMIT_VALID != 0U;
+    /* Deprecated compatibility API: the cable limit is always active. */
+    return true;
 }
 
 int32_t YawAxis_GetSoftLimitMinMilliDeg(void)
 {
-    return YAW_SOFT_MIN_MDEG;
+    return YAW_CABLE_LIMIT_MIN_MDEG;
 }
 
 int32_t YawAxis_GetSoftLimitMaxMilliDeg(void)
 {
-    return YAW_SOFT_MAX_MDEG;
+    return YAW_CABLE_LIMIT_MAX_MDEG;
+}
+
+int32_t YawAxis_GetCableLimitMinPulses(void)
+{
+    return YAW_CABLE_LIMIT_MIN_PULSES;
+}
+
+int32_t YawAxis_GetCableLimitMaxPulses(void)
+{
+    return YAW_CABLE_LIMIT_MAX_PULSES;
+}
+
+int32_t YawAxis_GetCableMarginToMinMilliDeg(void)
+{
+    const int32_t current_mdeg = YawAxis_GetCommandedMilliDeg();
+    const int64_t margin = (int64_t)current_mdeg - YAW_CABLE_LIMIT_MIN_MDEG;
+
+    if ((current_mdeg == INT32_MIN) || (margin > INT32_MAX))
+    {
+        return INT32_MIN;
+    }
+    return (int32_t)margin;
+}
+
+int32_t YawAxis_GetCableMarginToMaxMilliDeg(void)
+{
+    const int32_t current_mdeg = YawAxis_GetCommandedMilliDeg();
+    const int64_t margin = (int64_t)YAW_CABLE_LIMIT_MAX_MDEG - current_mdeg;
+
+    if ((current_mdeg == INT32_MIN) || (margin > INT32_MAX))
+    {
+        return INT32_MIN;
+    }
+    return (int32_t)margin;
+}
+
+uint32_t YawAxis_GetCableRemainingNegativePulses(void)
+{
+    const int64_t current_relative_pulses =
+        (int64_t)Stepper_GetCommandedPosition() - s_zero_offset_pulses;
+    const int64_t remaining = current_relative_pulses - YAW_CABLE_LIMIT_MIN_PULSES;
+
+    if ((s_reference_state == YAW_REFERENCE_INVALID) || (remaining < 0) ||
+        (remaining > UINT32_MAX))
+    {
+        return 0U;
+    }
+    return (uint32_t)remaining;
+}
+
+uint32_t YawAxis_GetCableRemainingPositivePulses(void)
+{
+    const int64_t current_relative_pulses =
+        (int64_t)Stepper_GetCommandedPosition() - s_zero_offset_pulses;
+    const int64_t remaining = YAW_CABLE_LIMIT_MAX_PULSES - current_relative_pulses;
+
+    if ((s_reference_state == YAW_REFERENCE_INVALID) || (remaining < 0) ||
+        (remaining > UINT32_MAX))
+    {
+        return 0U;
+    }
+    return (uint32_t)remaining;
 }
 
 uint32_t YawAxis_GetLimitRejectCount(void)

@@ -30,7 +30,7 @@ snapshot.
 | Watch field | Unit / values | Meaning |
 |---|---|---|
 | `g_control_debug.state.snapshot_seq` | count | Odd while updating; even after a complete snapshot |
-| `g_control_debug.state.version` | version | Debug-state layout version; currently 2 |
+| `g_control_debug.state.version` | version | Debug-state layout version; currently 3 |
 | `g_control_debug.state.heartbeat` | count | Increments on each completed snapshot; a changing value indicates the main loop is servicing diagnostics |
 | `g_control_debug.state.tick_ms` | ms | Shared system time from `HAL_GetTick()` through `SystemTime_GetMs()` |
 | `g_control_debug.state.app_health_flags` | bitmask | Initialization faults recorded by `App_Init()`; zero means no recorded init fault |
@@ -91,16 +91,30 @@ software limit is a command guard, not a physical stop or a measured safe range.
 | `state.yaw.stepper_state` | enum | `UNINITIALIZED=0`, `DISABLED=1`, `IDLE=2`, `DIR_SETUP=3`, `RUNNING=4`, `STOPPING=5`, `FAULT=6` |
 | `state.yaw.enabled` | 0/1 | Stepper/TB6600 interface enabled state |
 | `state.yaw.reference_state` | enum | `INVALID=0`, `MANUAL=1`; HOMED/SENSOR are reserved states, not implemented workflows |
-| `state.yaw.soft_limit_min_mdeg` | mdeg | Current configured Yaw limit placeholder |
-| `state.yaw.soft_limit_max_mdeg` | mdeg | Current configured Yaw limit placeholder |
-| `state.yaw.soft_limit_enabled` | 0/1 | Currently 0; no calibrated Yaw travel limit is configured |
-| `state.yaw.limit_reject_count` | count | Yaw requests rejected by an enabled software limit |
+| `state.yaw.soft_limit_min_mdeg` / `soft_limit_max_mdeg` | mdeg | Deprecated compatibility names; report the mandatory cable limits -180000 / +180000 |
+| `state.yaw.soft_limit_enabled` | 0/1 | Deprecated compatibility field; always 1 because cable limits cannot be disabled |
+| `state.yaw.limit_reject_count` | count | Compatibility name for the number of Yaw cable-limit rejections |
 | `state.yaw.status` | `YawAxisStatus` | Most recent YawAxis result; see `Control/Inc/yaw_axis.h` |
+| `state.yaw.cable_limit_min_mdeg` / `cable_limit_max_mdeg` | mdeg | Mandatory cable range: -180000..+180000 |
+| `state.yaw.cable_limit_min_pulses` / `cable_limit_max_pulses` | PUL | Mandatory range relative to cable zero: -800..+800 |
+| `state.yaw.cable_margin_to_min_mdeg` | mdeg | Current open-loop Yaw estimate minus the lower angle limit; `INT32_MIN` if reference is invalid |
+| `state.yaw.cable_margin_to_max_mdeg` | mdeg | Upper angle limit minus the current open-loop Yaw estimate; `INT32_MIN` if reference is invalid |
+| `state.yaw.cable_remaining_negative_pulses` | PUL | Remaining allowed negative-direction pulses; 0 if reference is invalid |
+| `state.yaw.cable_remaining_positive_pulses` | PUL | Remaining allowed positive-direction pulses; 0 if reference is invalid |
+| `state.yaw.cable_limit_reject_count` | count | Yaw cable-limit rejection counter; same counter as the compatibility field above |
 
-The current software setting is 1600 PUL/rev for the reported 1.8° motor and
-selected 8-microstep row: 1 PUL is nominally 225 mdeg. This is a command
-conversion, not shaft feedback; missed steps and movement while disabled are
-not detected.
+Yaw has no slip ring. Its 0° coordinate is the manually established natural
+Pitch-cable route, and its non-disableable travel range is -180°..+180° around
+that zero. The position is a finite linear coordinate: +170° to -170° is about
+-340°, never the +20° shortest path. The current setting is 1600 PUL/rev for
+the reported 1.8° motor and selected 8-microstep row: 1 PUL is nominally 225
+mdeg. This is open-loop pulse bookkeeping, not shaft feedback; missed steps
+and manual movement cannot be detected.
+
+When `reference_state == INVALID`, `target_mdeg`, `quantized_target_mdeg`,
+`commanded_mdeg`, and both angle margins are `INT32_MIN`; do not interpret that
+sentinel as 0°. Pulse margins are 0 while reference is invalid. At boot, the
+Stepper count being zero does not establish cable neutral.
 
 ## Response-time tuning
 
@@ -158,10 +172,10 @@ Send only one request at a time:
 | 2 | `DEBUG_CMD_SET_PITCH_PULSE_US` | Debug raw pulse; inverse mapped and checked against Pitch limits |
 | 3 | `DEBUG_CMD_SET_YAW_MDEG` | Set Yaw target and frequency; requires manual reference and enabled idle Stepper |
 | 4 | `DEBUG_CMD_SET_BOTH_MDEG` | Prevalidate both axis requests, then schedule them |
-| 5 | `DEBUG_CMD_SET_YAW_ZERO` | Save current stopped pulse count as manual zero; no shaft motion |
+| 5 | `DEBUG_CMD_SET_YAW_ZERO` | Save current pulse count as cable-neutral zero; accepted only while Stepper is disabled |
 | 6 | `DEBUG_CMD_YAW_ENABLE` | Enable the Stepper/TB6600 interface |
-| 7 | `DEBUG_CMD_YAW_DISABLE` | Request Stepper disable |
-| 8 | `DEBUG_CMD_YAW_STOP` | Gracefully stop at a complete pulse boundary |
+| 7 | `DEBUG_CMD_YAW_DISABLE` | Disable the Stepper and invalidate Yaw reference |
+| 8 | `DEBUG_CMD_YAW_STOP` | Gracefully stop at a complete pulse boundary; preserve valid reference |
 | 9 | `DEBUG_CMD_SET_PITCH_RESPONSE_MS` | Set response time for the next Pitch target |
 
 | Result value | Meaning |
@@ -177,6 +191,7 @@ Send only one request at a time:
 | -8 | `DEBUG_RESULT_AXIS_DISABLED` |
 | -9 | `DEBUG_RESULT_DRIVER_ERROR` |
 | -10 | `DEBUG_RESULT_PARTIAL` |
+| -11 | `DEBUG_RESULT_INVALID_STATE` |
 
 For `state.pitch.status`, values are `OK=0`, `INVALID_ARGUMENT=1`,
 `NOT_INITIALIZED=2`, `LIMIT=3`, `DISABLED=4`, and `DRIVER_ERROR=5`. For
@@ -216,12 +231,21 @@ To change response time through command 9, set
 `g_control_debug.command.request_seq` as the last edit. The direct tuning field
 is simpler when only the next-move duration needs to change.
 
-### Yaw first reference and +5° example
+### Yaw cable-zero and +5° example
 
-With the Stepper stopped and the mechanism physically aligned at the chosen
-zero, send command 5 (`DEBUG_CMD_SET_YAW_ZERO`). Confirm
-`reference_state == MANUAL`. Then send command 6 (`DEBUG_CMD_YAW_ENABLE`) and
-confirm `enabled == 1`. Only then request a Yaw target.
+At boot the Yaw reference is invalid, regardless of the Stepper pulse count.
+With the Stepper/TB6600 disabled, manually place the mechanism where the Pitch
+cable has its natural route and no visible twist. Then send command 5
+(`DEBUG_CMD_SET_YAW_ZERO`). Confirm `reference_state == MANUAL`,
+`commanded_mdeg == 0`, and that `zero_offset_pulses` records the current
+Stepper count. Send command 6 (`DEBUG_CMD_YAW_ENABLE`) and confirm
+`enabled == 1`; only then request a Yaw target. Setting zero while enabled,
+busy, stopping, or faulted returns `DEBUG_RESULT_INVALID_STATE`.
+
+`DEBUG_CMD_YAW_STOP` preserves the reference after a graceful stop. Any
+`DEBUG_CMD_YAW_DISABLE` invalidates it because the shaft can be moved by hand
+while unpowered. To move again, disable, re-establish cable neutral, set zero,
+then enable. Re-enabling alone does not restore the reference.
 
 For +5° at a conservative 100 PUL/s, edit these Value cells in order and
 increment `request_seq` last:
@@ -236,7 +260,34 @@ increment `request_seq` last:
 At 225 mdeg/PUL, this rounds to about 22 PUL, or 4950 mdeg. Observe
 `quantized_target_mdeg`, `remaining_pulses` and `commanded_position_pulses`.
 This is still open-loop pulse bookkeeping, not confirmation of actual shaft
-angle. Return to zero with another acknowledged target request.
+angle. The +5°, 0°, -5°, 0° sequence is the first motion check; increase the
+range gradually only after each move and cable clearance are confirmed. Do not
+start with ±180°.
+
+The Yaw Watch fields to keep visible are:
+
+```text
+g_control_debug.state.yaw.target_mdeg
+g_control_debug.state.yaw.quantized_target_mdeg
+g_control_debug.state.yaw.commanded_mdeg
+g_control_debug.state.yaw.commanded_position_pulses
+g_control_debug.state.yaw.zero_offset_pulses
+g_control_debug.state.yaw.reference_state
+g_control_debug.state.yaw.enabled
+g_control_debug.state.yaw.stepper_state
+g_control_debug.state.yaw.remaining_pulses
+g_control_debug.state.yaw.pulse_frequency_hz
+g_control_debug.state.yaw.cable_limit_min_mdeg
+g_control_debug.state.yaw.cable_limit_max_mdeg
+g_control_debug.state.yaw.cable_limit_min_pulses
+g_control_debug.state.yaw.cable_limit_max_pulses
+g_control_debug.state.yaw.cable_margin_to_min_mdeg
+g_control_debug.state.yaw.cable_margin_to_max_mdeg
+g_control_debug.state.yaw.cable_remaining_negative_pulses
+g_control_debug.state.yaw.cable_remaining_positive_pulses
+g_control_debug.state.yaw.cable_limit_reject_count
+g_control_debug.state.yaw.status
+```
 
 ## Staged first hardware debugging
 
@@ -279,7 +330,7 @@ loaded-voltage checks pass.
 ### E. First Yaw motion
 
 - Only after the electrical and powered-driver checks pass, keep the motor
-  secured, align a manual zero while stopped, and follow the zero/enable/+5°
+  secured, disable the Stepper, align cable neutral, set zero in Ozone, and follow the zero/enable/+5°
   sequence above at low frequency.
 - Check +5°, return to 0°, then -5° and return to 0°. Record direction,
   movement, missed-step observations and measured pulses in `wiring.md`.
@@ -289,10 +340,11 @@ Do not begin with Pitch ±30°, Yaw 180°, or 10 kHz Stepper commands.
 ## Debug/Release and CubeMX boundary
 
 Normal UART Pitch control is `PITCH <signed-mdeg>`. `SERVO <degrees>`,
-`SERVO_US <pulse>` and direct `STEPPER ENABLE/MOVE` are Debug-only bench
-interfaces; Pitch raw requests still pass through the same ±30° check. Release
-returns `ERR` for those raw actuation commands. `STEPPER DISABLE` and
-`STEPPER STOP` remain available for recovery.
+`SERVO_US <pulse>` and `STEPPER ENABLE/MOVE` are Debug-only bench interfaces;
+Pitch raw requests still pass through the same ±30° check and Stepper moves
+pass through YawAxis cable-reference and pulse-limit checks. Release returns
+`ERR` for those raw actuation commands. `STEPPER DISABLE` and `STEPPER STOP`
+remain available for recovery; DISABLE invalidates the cable reference.
 
 The `g_control_debug` ELF symbol exists in Debug and Release, while command
 injection and raw bench actuation are enabled only in Debug. Confirm symbol

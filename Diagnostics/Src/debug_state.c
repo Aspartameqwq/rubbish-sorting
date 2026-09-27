@@ -56,6 +56,9 @@ static int32_t Debug_MapYawStatus(YawAxisStatus status)
         case YAW_AXIS_STATUS_DISABLED:
             return DEBUG_RESULT_AXIS_DISABLED;
         case YAW_AXIS_STATUS_DRIVER_ERROR:
+            return DEBUG_RESULT_DRIVER_ERROR;
+        case YAW_AXIS_STATUS_INVALID_STATE:
+            return DEBUG_RESULT_INVALID_STATE;
         default:
             return DEBUG_RESULT_DRIVER_ERROR;
     }
@@ -211,6 +214,17 @@ static DebugState Debug_CaptureSnapshot(uint32_t now_ms, uint32_t app_health_fla
     snapshot.yaw.soft_limit_enabled = YawAxis_IsSoftLimitEnabled() ? 1U : 0U;
     snapshot.yaw.limit_reject_count = YawAxis_GetLimitRejectCount();
     snapshot.yaw.status = (int32_t)YawAxis_GetLastStatus();
+    snapshot.yaw.cable_limit_min_mdeg = YAW_CABLE_LIMIT_MIN_MDEG;
+    snapshot.yaw.cable_limit_max_mdeg = YAW_CABLE_LIMIT_MAX_MDEG;
+    snapshot.yaw.cable_limit_min_pulses = YawAxis_GetCableLimitMinPulses();
+    snapshot.yaw.cable_limit_max_pulses = YawAxis_GetCableLimitMaxPulses();
+    snapshot.yaw.cable_margin_to_min_mdeg = YawAxis_GetCableMarginToMinMilliDeg();
+    snapshot.yaw.cable_margin_to_max_mdeg = YawAxis_GetCableMarginToMaxMilliDeg();
+    snapshot.yaw.cable_remaining_negative_pulses =
+        YawAxis_GetCableRemainingNegativePulses();
+    snapshot.yaw.cable_remaining_positive_pulses =
+        YawAxis_GetCableRemainingPositivePulses();
+    snapshot.yaw.cable_limit_reject_count = YawAxis_GetLimitRejectCount();
 
     return snapshot;
 }
@@ -250,6 +264,15 @@ void Debug_Init(void)
     g_control_debug.state.yaw.quantized_target_mdeg = DEBUG_ANGLE_INVALID_MDEG;
     g_control_debug.state.yaw.commanded_mdeg = DEBUG_ANGLE_INVALID_MDEG;
     g_control_debug.state.yaw.measured_mdeg = DEBUG_ANGLE_INVALID_MDEG;
+    g_control_debug.state.yaw.soft_limit_min_mdeg = YAW_CABLE_LIMIT_MIN_MDEG;
+    g_control_debug.state.yaw.soft_limit_max_mdeg = YAW_CABLE_LIMIT_MAX_MDEG;
+    g_control_debug.state.yaw.soft_limit_enabled = 1U;
+    g_control_debug.state.yaw.cable_limit_min_mdeg = YAW_CABLE_LIMIT_MIN_MDEG;
+    g_control_debug.state.yaw.cable_limit_max_mdeg = YAW_CABLE_LIMIT_MAX_MDEG;
+    g_control_debug.state.yaw.cable_limit_min_pulses = YAW_CABLE_LIMIT_MIN_PULSES;
+    g_control_debug.state.yaw.cable_limit_max_pulses = YAW_CABLE_LIMIT_MAX_PULSES;
+    g_control_debug.state.yaw.cable_margin_to_min_mdeg = DEBUG_ANGLE_INVALID_MDEG;
+    g_control_debug.state.yaw.cable_margin_to_max_mdeg = DEBUG_ANGLE_INVALID_MDEG;
     g_control_debug.state.last_debug_result = DEBUG_RESULT_OK;
     g_control_debug.command.result = DEBUG_RESULT_OK;
     g_control_debug.tuning.pitch_response_time_ms = PITCH_RESPONSE_TIME_DEFAULT_MS;

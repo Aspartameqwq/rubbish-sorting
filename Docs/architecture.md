@@ -2,7 +2,7 @@
 
 ## Status
 
-The project separates Pitch and Yaw coordinates from their actuator drivers. PitchAxis owns the relative-to-horizontal target, hard ±30° command range and Servo trajectory. YawAxis owns angle/pulse conversion, manual reference and Stepper scheduling; its position remains open loop. `g_control_debug` exposes Ozone telemetry, tuning and a single-request command mailbox. No angle sensor or PID actuator output is implemented. Hardware behavior remains pending; see [axis control](axis-control.md), [debugging](debugging.md), and [development](development.md).
+The project separates Pitch and Yaw coordinates from their actuator drivers. PitchAxis owns the relative-to-horizontal target, hard ±30° command range and Servo trajectory. YawAxis owns angle/pulse conversion, manual cable-neutral reference, mandatory ±180°/±800 PUL limits and Stepper scheduling; its position remains open loop. `g_control_debug` exposes Ozone telemetry, tuning and a single-request command mailbox. No angle sensor or PID actuator output is implemented. Hardware behavior remains pending; see [axis control](axis-control.md), [debugging](debugging.md), and [development](development.md).
 
 ## Layers and dependencies
 
@@ -25,7 +25,7 @@ Core/main
 | App | Initialization order, health flags, shared tick snapshot and nonblocking scheduling | Peripheral register access or protocol internals |
 | Protocol | Bounded line assembly, strict parsing and ASCII replies | HAL calls, GPIO/TIM/DMA handles or transport state |
 | Control/PitchAxis | Relative Pitch target, mandatory range checks, trajectory and Servo mapping | TIM handles, UART, Servo-driver internals or sensor claims |
-| Control/YawAxis | Yaw target, reference offset, pulse/angle conversion, optional travel limits and Stepper scheduling | HAL/GPIO/TIM registers, UART or physical position feedback |
+| Control/YawAxis | Yaw target, cable-neutral reference offset, hard cable limits, pulse/angle conversion and Stepper scheduling | HAL/GPIO/TIM registers, UART or physical position feedback |
 | Motion/Stepper | Requested pulse moves, direction setup, pulse progress and commanded pulse count | HAL, GPIO/TIM handles or command parsing |
 | Motion/profile | HAL-free integer trapezoidal/triangular frequency sequence | Hardware state, allocation or floating point |
 | Diagnostics | Stable-sequence telemetry snapshot, Ozone tuning and single-request mailbox | Control decisions from telemetry, direct HAL/register access or private state |
@@ -34,7 +34,7 @@ Core/main
 
 `App` initializes Servo, HC-04, TB6600, Stepper and then both axes. Each `App_Process()` call samples `SystemTime_GetMs()` once, advances HC-04, calls `PitchAxis_Process(now_ms)` and `YawAxis_Process()`, handles Protocol, then Diagnostics. Pitch changes are time based and do not block the loop.
 
-Normal UART Pitch control is `PITCH <signed-mdeg>` and goes through PitchAxis. Absolute Servo angle, raw PWM and direct Stepper motion are Debug-only bench paths. Raw Pitch paths are converted back into Pitch coordinates and checked against the same hard range. `STEPPER DISABLE` and `STEPPER STOP` remain available for stop/recovery; raw Stepper commands do not implement normal Yaw positioning.
+Normal UART Pitch control is `PITCH <signed-mdeg>` and goes through PitchAxis. Absolute Servo angle and raw PWM are Debug-only bench paths; raw Pitch paths are converted back into Pitch coordinates and checked against the same hard range. Debug UART Stepper actions pass through YawAxis: `STEPPER MOVE` uses the relative-pulse cable-limit wrapper, `STEPPER STOP` preserves a valid cable reference, and `STEPPER DISABLE` invalidates it. No Protocol or Diagnostics movement path calls the low-level Stepper move directly.
 
 ## Data flow
 

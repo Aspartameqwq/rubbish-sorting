@@ -50,23 +50,22 @@
 #define YAW_PULSES_PER_REV                  1600U
 #define ANGLE_MDEG_PER_REV                  360000L
 
-/* Placeholder only; physical yaw travel is not calibrated. */
-#ifndef YAW_SOFT_LIMIT_VALID
-#define YAW_SOFT_LIMIT_VALID                0U
-#endif
-#ifndef YAW_SOFT_MIN_MDEG
-#define YAW_SOFT_MIN_MDEG                   (-180000L)
-#endif
-#ifndef YAW_SOFT_MAX_MDEG
-#define YAW_SOFT_MAX_MDEG                   180000L
-#endif
+/*
+ * Mandatory cable-wrap limits for the no-slip-ring Yaw mechanism.
+ * Establish Yaw 0 degrees with the Pitch cable in its neutral, untwisted
+ * position. The total permitted travel is one revolution: -180 to +180.
+ */
+#define YAW_CABLE_LIMIT_MIN_MDEG            (-180000L)
+#define YAW_CABLE_LIMIT_MAX_MDEG             180000L
+#define YAW_CABLE_LIMIT_MIN_PULSES          (-800L)
+#define YAW_CABLE_LIMIT_MAX_PULSES           800L
 
 /* =============================
  * Debug and Ozone policy
  * ============================= */
 
 #define DEBUG_SNAPSHOT_PERIOD_MS            20U
-#define DEBUG_STATE_VERSION                 2U
+#define DEBUG_STATE_VERSION                 3U
 
 #ifndef DEBUG_CONTROL_ENABLE
 #if defined(DEBUG)
@@ -112,7 +111,8 @@ typedef enum
     DEBUG_RESULT_BUSY = -7,
     DEBUG_RESULT_AXIS_DISABLED = -8,
     DEBUG_RESULT_DRIVER_ERROR = -9,
-    DEBUG_RESULT_PARTIAL = -10
+    DEBUG_RESULT_PARTIAL = -10,
+    DEBUG_RESULT_INVALID_STATE = -11
 } DebugCommandResult;
 
 typedef struct
@@ -156,6 +156,16 @@ typedef struct
     uint32_t soft_limit_enabled;
     uint32_t limit_reject_count;
     int32_t status;
+    /* Appended cable telemetry; legacy soft-limit fields above remain aliases. */
+    int32_t cable_limit_min_mdeg;
+    int32_t cable_limit_max_mdeg;
+    int32_t cable_limit_min_pulses;
+    int32_t cable_limit_max_pulses;
+    int32_t cable_margin_to_min_mdeg;
+    int32_t cable_margin_to_max_mdeg;
+    uint32_t cable_remaining_negative_pulses;
+    uint32_t cable_remaining_positive_pulses;
+    uint32_t cable_limit_reject_count;
 } YawDebugState;
 
 typedef struct
@@ -226,6 +236,44 @@ extern volatile ControlDebugBlock g_control_debug;
 #endif
 #if (PITCH_UPDATE_PERIOD_MS == 0U)
 #error "PITCH_UPDATE_PERIOD_MS must be nonzero"
+#endif
+#if (YAW_PULSES_PER_REV == 0U)
+#error "YAW_PULSES_PER_REV must be greater than zero"
+#endif
+#if (ANGLE_MDEG_PER_REV <= 0L)
+#error "ANGLE_MDEG_PER_REV must be positive"
+#endif
+#if ((ANGLE_MDEG_PER_REV % YAW_PULSES_PER_REV) != 0U)
+#error "Yaw pulses per revolution must divide the angle revolution exactly"
+#endif
+#if (YAW_CABLE_LIMIT_MIN_MDEG >= 0L)
+#error "Yaw cable minimum must be negative"
+#endif
+#if (YAW_CABLE_LIMIT_MAX_MDEG <= 0L)
+#error "Yaw cable maximum must be positive"
+#endif
+#if (YAW_CABLE_LIMIT_MIN_MDEG >= YAW_CABLE_LIMIT_MAX_MDEG)
+#error "Yaw cable limits must have MIN < MAX"
+#endif
+#if ((YAW_CABLE_LIMIT_MAX_MDEG - YAW_CABLE_LIMIT_MIN_MDEG) > ANGLE_MDEG_PER_REV)
+#error "Yaw cable travel must not exceed one revolution"
+#endif
+#if (YAW_CABLE_LIMIT_MIN_PULSES >= 0L)
+#error "Yaw cable minimum pulse limit must be negative"
+#endif
+#if (YAW_CABLE_LIMIT_MAX_PULSES <= 0L)
+#error "Yaw cable maximum pulse limit must be positive"
+#endif
+#if (YAW_CABLE_LIMIT_MIN_PULSES >= YAW_CABLE_LIMIT_MAX_PULSES)
+#error "Yaw cable pulse limits must have MIN < MAX"
+#endif
+#if ((-(YAW_CABLE_LIMIT_MIN_MDEG) * YAW_PULSES_PER_REV) != \
+     (-(YAW_CABLE_LIMIT_MIN_PULSES) * ANGLE_MDEG_PER_REV))
+#error "Yaw minimum cable pulse and angle limits are inconsistent"
+#endif
+#if ((YAW_CABLE_LIMIT_MAX_MDEG * YAW_PULSES_PER_REV) != \
+     (YAW_CABLE_LIMIT_MAX_PULSES * ANGLE_MDEG_PER_REV))
+#error "Yaw maximum cable pulse and angle limits are inconsistent"
 #endif
 #if (DEBUG_CONTROL_ENABLE != 0) && (DEBUG_CONTROL_ENABLE != 1)
 #error "DEBUG_CONTROL_ENABLE must be 0 or 1"

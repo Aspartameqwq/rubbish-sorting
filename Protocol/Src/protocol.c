@@ -6,6 +6,7 @@
 #include "project_config.h"
 #include "servo.h"
 #include "stepper.h"
+#include "yaw_axis.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -456,7 +457,7 @@ static bool Protocol_ExecuteCommand(void)
         (memcmp(s_command_line, stepper_enable, sizeof(stepper_enable) - 1U) == 0))
     {
 #if (RAW_BENCH_COMMANDS_ENABLE == 1)
-        if (Stepper_Enable() == STEPPER_STATUS_OK)
+        if (YawAxis_Enable() == YAW_AXIS_STATUS_OK)
         {
             Protocol_SendOk();
         }
@@ -473,7 +474,7 @@ static bool Protocol_ExecuteCommand(void)
     if ((s_command_length == (sizeof(stepper_disable) - 1U)) &&
         (memcmp(s_command_line, stepper_disable, sizeof(stepper_disable) - 1U) == 0))
     {
-        if (Stepper_Disable() == STEPPER_STATUS_OK)
+        if (YawAxis_Disable() == YAW_AXIS_STATUS_OK)
         {
             Protocol_SendOk();
         }
@@ -487,7 +488,7 @@ static bool Protocol_ExecuteCommand(void)
     if ((s_command_length == (sizeof(stepper_stop) - 1U)) &&
         (memcmp(s_command_line, stepper_stop, sizeof(stepper_stop) - 1U) == 0))
     {
-        if (Stepper_Stop() == STEPPER_STATUS_OK)
+        if (YawAxis_Stop() == YAW_AXIS_STATUS_OK)
         {
             Protocol_SendOk();
         }
@@ -517,7 +518,7 @@ static bool Protocol_ExecuteCommand(void)
         if (Protocol_ParseSigned32AndUnsigned32((uint16_t)(sizeof(stepper_move_prefix) - 1U),
                                                &steps,
                                                &frequency_hz) &&
-            (Stepper_MoveSteps(steps, frequency_hz) == STEPPER_STATUS_OK))
+            (YawAxis_MoveRelativePulses(steps, frequency_hz) == YAW_AXIS_STATUS_OK))
         {
             Protocol_SendOk();
         }

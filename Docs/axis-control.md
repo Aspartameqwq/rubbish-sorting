@@ -51,14 +51,49 @@ Pitch uses position commands plus software limits and time-based smoothing. No e
 
 ## Yaw and feedback boundary
 
-Yaw remains open loop. For the reported 1.8° motor and the selected TB6600 8-microstep row:
+### No-slip-ring cable-wrap limit
+
+The Pitch wiring follows the Yaw mechanism and there is no slip ring. Yaw is a
+finite linear coordinate centered on the manually established cable-neutral
+position; it is not a modulo-360 angle:
+
+```text
+-180°                 0°                 +180°
+  |--------------------|--------------------|
+                       ^
+                cable neutral
+```
+
+The non-disableable software limits are `-180000..+180000 mdeg` and
+`-800..+800 PUL` for the selected 1600 PUL/rev configuration. Both the
+requested angle and its quantized angle/pulse endpoint are checked. Commands
+are rejected at the boundary; they are never clamped. A move from +170° to
+-170° follows the signed linear delta of about -340°, not a +20° shortest path.
+No modulo or shortest-path wrapping is used.
+
+At boot, Yaw reference is `INVALID`, even if the firmware pulse counter is
+zero. The operator must place the mechanism at the natural cable route with
+the Stepper disabled, then issue `DEBUG_CMD_SET_YAW_ZERO`. `SET_YAW_ZERO` is
+rejected while enabled, moving, stopping or faulted. `STOP` preserves a valid
+reference; `DISABLE` invalidates it because the unpowered shaft can be moved
+without feedback. Re-enable alone does not restore the reference; set cable
+zero again while disabled before the next move.
+
+`STEPPER MOVE` is a Debug bench relative-pulse command, but it also passes
+through `YawAxis_MoveRelativePulses()` and is checked against the same
+reference and pulse limits. Debug and Protocol entry paths cannot bypass the
+Yaw cable boundary.
+
+### Open-loop feedback boundary
+
+For the reported 1.8° motor and the selected TB6600 8-microstep row:
 
 ```text
 200 full steps/rev × 8 = 1600 PUL/rev
 360000 mdeg / 1600 = 225 mdeg/PUL
 ```
 
-Angle requests round to the nearest signed pulse (half steps away from zero); requested and quantized targets are both retained. Absolute Yaw requests require a manually established zero and an enabled, idle Stepper. Firmware pulse counts cannot detect lost steps, shaft motion while unpowered, or hand movement.
+Angle requests round to the nearest signed pulse (half steps away from zero); requested and quantized targets are both retained. Absolute Yaw requests require a manually established cable-neutral zero and an enabled, idle Stepper. Firmware pulse counts cannot detect lost steps, shaft motion while unpowered, or hand movement. The cable limit is a software command guard, not a sensor or mechanical stop.
 
 Pitch and Yaw measured fields remain invalid until real sensors are added. Do not copy commanded values into measured fields. Yaw PID remains out of scope until encoder, IMU or other valid yaw feedback is available; this round adds no PID, sensor, homing, limit switch, DMA acceleration or RTOS.
 
@@ -66,4 +101,4 @@ Pitch and Yaw measured fields remain invalid until real sensors are added. Do no
 
 Reviewable control settings and the public Ozone interface are centralized in [control_debug_config.h](../Config/control_debug_config.h). `project_config.h` retains transport and peripheral settings. Limits and response tuning are not written into writable Ozone tuning fields; runtime tuning is limited to Pitch response time and is range checked.
 
-Host tests cover horizontal zero, fixed limit endpoints and rejects, raw-angle/raw-pulse limit enforcement, protocol and Ozone entry paths, 20 ms update cadence, linear midpoint, retarget continuity, response-time range/latching, Release gates and snapshot consistency. These checks establish software behavior only. Servo direction/travel, pulse calibration and physical safety remain pending bench verification.
+Host tests cover horizontal zero, Pitch limits, mandatory Yaw cable angle/pulse endpoints and rejects, linear +170° to -170° movement, relative-pulse Protocol and Ozone entry paths, reference invalidation/lifecycle, 20 ms update cadence, linear midpoint, retarget continuity, response-time range/latching, Release gates and snapshot consistency. These checks establish software behavior only. Servo direction/travel, cable-neutral placement, pulse calibration and physical safety remain pending bench verification.

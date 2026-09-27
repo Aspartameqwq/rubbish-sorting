@@ -72,6 +72,17 @@ fractional-center follow-up below.
 - `Docs/wiring.md` now contains the system connection map and an unfilled physical measurement record. Ozone variable meanings and staged operating examples are documented in `Docs/debugging.md`.
 - All hardware measurements and live Ozone/J-Link checks remain `PENDING`; CubeMX peripherals were not changed in this follow-up.
 
+## Yaw cable-wrap safety verification record
+
+- Host CTest: all four targets passed: Debug bench enabled, Release bench gated, mandatory Yaw limits with the legacy `YAW_SOFT_LIMIT_VALID=0` definition, and fractional Pitch-center configuration.
+- Coverage includes the fixed ±180000 mdeg / ±800 PUL boundaries, rejected out-of-range and quantized targets, relative-pulse guards in both directions, cable margins, invalid boot reference, disabled-only zeroing, STOP reference preservation, DISABLE invalidation, Ozone invalid-angle telemetry, and the +170° to -170° linear reverse path (1512 pulses).
+- ARM Debug build passed. RAM 2,640 bytes of 20 KB; Flash 34,496 bytes of 64 KB.
+- ARM Release build passed. RAM 2,648 bytes of 20 KB; Flash 19,484 bytes of 64 KB.
+- No compiler warnings were observed. GNU ld continues to report the existing `LOAD segment with RWX permissions` warning.
+- `arm-none-eabi-nm` found `g_control_debug` in both Debug and Release ELFs. Existing Yaw debug fields remain in place; cable telemetry is appended, and `DEBUG_STATE_VERSION` is 3.
+- Static source review confirms all application `Stepper_Enable`, `Stepper_Disable`, `Stepper_Stop` and `Stepper_MoveSteps` calls are inside YawAxis; UART Stepper commands call YawAxis wrappers. No CubeMX files were changed.
+- Cable limits use an operator-established open-loop reference and cannot detect missed steps, physical hand movement while disabled, or cable/mechanical condition. Ozone/J-Link and all physical motor, current, voltage and clearance checks remain `PENDING`.
+
 ## Static review checklist
 
 Before publishing a branch or updating this record:

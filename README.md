@@ -7,9 +7,10 @@ STM32F103C8T6 下位机工程，使用 STM32CubeMX 6.12.0、STM32CubeF1 HAL v1.8
 - CubeMX 已生成并核对：72 MHz 系统时钟、SWD、TIM2_CH1/PA0、USART1/PA9/PA10、DMA1_CH5 Circular RX、TIM3_CH1/PA6、PB12 DIR、PB13 ENA 和 TIM3 IRQ。
 - Pitch 轴以平台水平为 0°；已安装机构在 Servo 约 130° 时观察为水平，当前锚点为 130000 mdeg 并映射到 1500 µs，属于机械观察的初始值，尚非精密标定。锚点支持后续 mdeg 级精调，Servo 中心计算不会截断小数角度；PWM 输出仍按整数 µs 量化。
 - Pitch 目标硬限制为相对水平 ±30°，不能通过构建选项或 Ozone 运行期关闭。目标变更使用默认 1000 ms、可调 200–5000 ms 的非阻塞线性响应。
-- Yaw 轴由 Stepper/TB6600 控制；选定 1600 PUL/rev，即 225 mdeg/PUL。绝对 Yaw 命令需要操作员设置手动零点；Stepper 计数仍是开环估计。
+- Yaw 没有滑环，Pitch 线缆会随 Yaw 机构扭转。Yaw 0° 表示线缆自然、无明显扭转的人工 cable-neutral 位置；软件强制限制在 -180°..+180° / -800..+800 PUL，限位不能关闭，不使用 modulo 或 shortest-path wrap。
+- Yaw 采用 1.8° 步进电机与 8 细分时为 1600 PUL/rev、225 mdeg/PUL。启动后参考无效；只能在 Stepper disabled 时重新设置 cable zero。STOP 保留参考，DISABLE 后参考失效。Debug UART 的 `STEPPER MOVE` 也经 YawAxis 检查 cable limit。
 - Pitch/Yaw target、commanded estimate、measured angle 已分离。当前无角度传感器，两个 measured 字段均无效。
-- Yaw 软件限位仍默认关闭，范围未经过机构标定；Pitch 软件范围是命令保护，不是机械限位或实体验证。
+- Yaw cable-wrap 软件硬限位固定为 ±180°，但它依赖人工 cable-neutral 零点和开环脉冲计数；不是传感器或机械限位。Pitch 软件范围同样只是命令保护，不是机械限位或实体验证。
 - Ozone 使用单一全局对象 `g_control_debug` 暴露遥测、运行期 Pitch 响应时间调节和单请求邮箱；Debug 才启用调试/bench 命令，Release 会拒绝。
 - HC-04、命令解析、TB6600 BSP、有限步数 Stepper、整数 profile foundation 和 App health 状态已实现。
 - host 软件测试、ARM Debug/Release 构建和硬件验证状态以当前分支 CI/开发记录为准；未接实物时不得声称硬件通过。

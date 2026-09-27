@@ -6,7 +6,7 @@
 
 `Stepper_GetCommandedPosition()` represents firmware-counted completed PUL compare events. It is not actual shaft position: no encoder, feedback, homing or closed-loop correction exists. Lost motor steps, a truncated emergency-stop pulse, driver disable, power loss or manual shaft movement can make physical position differ from the counter.
 
-The user reports a motor step angle of 1.8° and 1.5 A current. At full step, 1.8° corresponds to 200 PUL pulses per revolution. With the TB6600 module set to microstep factor `M`, nominally use `200 × M` pulses per motor revolution, assuming no gearbox. `Stepper_MoveSteps()` and `STEPPER MOVE` count PUL pulses, while the frequency is PUL pulses per second; neither value is converted to full steps or degrees by the firmware. The microstep DIP setting must be known before translating a requested rotation into pulses.
+The user reports a motor step angle of 1.8° and approximately 1.5 A current. The project selects 8 microsteps from the pictured module label: 200 full steps/revolution × 8 = 1600 PUL pulses/revolution, nominally 0.225° per pulse with direct coupling. `Stepper_MoveSteps()` and `STEPPER MOVE` count PUL pulses, while frequency is PUL pulses per second; firmware does not convert requested pulses into degrees. The selected DIPs and full wiring are recorded in [Docs/wiring.md](wiring.md); actual switch positions and motion remain PENDING verification.
 
 ## State machine
 
@@ -25,7 +25,7 @@ Any driver/timer failure → FAULT
 
 ## Timer waveform and finite step count
 
-TIM3 timer clock is 72 MHz. Generated PSC 71 gives a 1 MHz counter (1 µs/count). For requested frequency `f`:
+TIM3 timer clock is 72 MHz. Generated PSC 71 gives a 1 MHz counter (1 µs/count). For requested PUL pulse frequency `f`:
 
 ```text
 period_counts = 1,000,000 / f
@@ -33,7 +33,7 @@ ARR           = period_counts - 1
 CCR           = TB6600_PULSE_HIGH_US (default 10)
 ```
 
-The 16-bit ARR and `CCR < ARR` conditions are checked before registers are updated. Default software rate limits are 20–10,000 steps/s; they are initial limits, not validated driver performance. PWM1 creates a fixed active pulse and variable low interval. PUL is produced entirely by TIM3 hardware.
+The 16-bit ARR and `CCR < ARR` conditions are checked before registers are updated. Default software rate limits are 20–10,000 PUL pulses/s; they are initial limits, not validated driver performance. At the selected 1600 pulses/revolution, 10,000 pulses/s corresponds mathematically to 375 rev/min, but the motor may not reach that rate. PWM1 creates a fixed active pulse and variable low interval. PUL is produced entirely by TIM3 hardware.
 
 The finite move count is based on TIM3 CH1 compare/pulse-finished events, not Update IRQ. In PWM1 the compare event marks the end of the active PUL width. The callback increments one completed pulse; on pulse N it immediately stops PWM before the next timer period can begin. Therefore the firmware requests and counts exactly N complete active pulse widths for an uninterrupted normal move, with no start-update event counted as a step and no N+1 pulse. This is the user-selected resolution of the earlier Update-vs-compare design choice.
 

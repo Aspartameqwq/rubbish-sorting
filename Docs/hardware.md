@@ -14,16 +14,16 @@ Generated configuration is checked against the `.ioc` and generated sources. Mod
 | HC-04 | USART1 TX PA9 / RX PA10, 8N1, 115200 | Generated/config match; actual module baud remains `TO_BE_CONFIRMED` |
 | HC-04 RX DMA | DMA1 Channel 5, circular, byte transfers, high priority | Generated and verified; global IRQ enabled |
 | TB6600 PUL | TIM3_CH1 / PA6, PWM1, initial PSC 71, ARR 49999, CCR 10, high polarity | Generated and verified; BSP checks the timer settings and applies configured polarity |
-| TB6600 DIR / ENA | PB12 / PB13 push-pull outputs, initial low | Generated and verified; polarity remains a software assumption pending module confirmation |
+| TB6600 DIR / ENA | PB12 / PB13 push-pull outputs, initial low | Generated and verified; selected active-high software levels; physical DIR/ENA behavior pending |
 | TIM3 interrupt | TIM3 global IRQ enabled and dispatches to HAL | Generated and verified; used for CH1 compare events |
-| TB6600 module marking | `TB6600`, `DC 9–42VDC` on the user-provided photo | Label transcription only; exact variant and connected supply are unknown |
+| TB6600 module marking | PUFEIDE `TB6600`, `DC 9–42VDC` on the user-provided photo | Label transcription; exact board revision and connected supply are unknown |
 | Servo pulse window | 1400–1600 µs, center 1500 µs | Narrow initial test window; calibration required |
 | TB6600 pulse width | 10 µs active width | Initial software value; actual module requirement unverified |
-| Step frequency | 20–10,000 steps/s | Initial software limits; not hardware verified |
+| Step frequency | 20–10,000 PUL pulses/s | Initial software limits; not hardware verified |
 | Direction setup | 1 ms nonblocking wait | Initial software value; module timing unverified |
 | Stepper motor | 1.8° step angle, 1.5 A reported current; four leads reported connected to `A+`, `A-`, `B+`, `B-` | User-provided; current rating basis and coil pairing not independently verified |
-| TB6600 DIP settings | Current and microstep switch positions | Not provided; do not assume from the printed selection table |
-| TB6600 signal wiring | Connections to `PUL±`, `DIR±`, `ENA±`, `VCC` and `GND` | Not provided; input topology and 3.3 V compatibility remain unverified |
+| TB6600 DIP settings | Project-selected 8 microstep / 1600 PUL per revolution and 1.5 A label row | SW1 OFF, SW2 ON, SW3 OFF; SW4 ON, SW5 ON, SW6 OFF; actual switch positions/current pending |
+| TB6600 wiring topology | Selected 3.3 V direct GPIO, common-cathode wiring | See the [wiring source of truth](wiring.md); GPIO current, logic recognition, waveform and motion remain PENDING |
 
 ## Resource allocation
 
@@ -85,11 +85,13 @@ Check `.ioc`, `Core/Src/tim.c`, `Core/Src/gpio.c`, `Core/Inc/main.h`, `Core/Src/
 
 CubeMX may write local absolute package paths into `cmake/stm32cubemx/CMakeLists.txt`; root `CMakeLists.txt` intentionally does not include that generated file. CubeF1 lookup uses the user-maintained `cmake/stm32cube_f1.cmake`, so the generated file cannot break root builds. Review Core source changes and update the root source list when CubeMX adds/removes generated files.
 
-## Electrical and motion assumptions
+## Selected wiring and pending hardware checks
 
-The firmware targets a commercial TB6600 driver module. It is not safe to infer module-level input voltage, optocoupler current, polarity, pulse width, or maximum frequency from the bare TB6600HG IC datasheet. Confirm the exact module and its manual before wiring or enabling the motor.
+The project selects a 3.3 V direct-GPIO common-cathode topology and DIP settings based on the user's plan and the pictured module label. The canonical signal, power, motor and switch tables are in [Docs/wiring.md](wiring.md). `Config/project_config.h` uses active-high PUL/ENA and logical FORWARD; the mechanical direction mapping is still unverified. No hardware check is implied by these project decisions.
 
-Current initial assumptions in `Config/project_config.h` are active-high ENA, forward DIR high, and active-high PUL. The project labels them `INITIAL_ASSUMPTION` / `TO_BE_CONFIRMED`. Confirm whether the actual module expects common-anode/common-cathode wiring, whether 3.3 V GPIO is sufficient for its optocouplers, ENA behavior, direction mapping, minimum pulse width, and safe maximum step rate. Do not rely on these software values as hardware specifications.
+Before applying TB6600 driver power, measure the PUL/DIR/ENA input currents and confirm valid 3.3 V logic levels. The project acceptance gate is at most 8 mA per signal. PUL pulse recognition, ENA behavior, DIR orientation, 10 µs pulse-width margin, safe pulse rate, electrical noise and motor rotation remain PENDING. Do not infer module input behavior from the bare TB6600HG IC datasheet.
+
+For STM32 GPIO output conditions, refer to the ST datasheet linked below. PC13/PC14/PC15 are not substitutes for PA6/PB12/PB13 in this selected direct-drive topology.
 
 Also confirm the exact Servo model and safe pulse endpoints, and confirm the HC-04 variant, logic-level requirements, pairing and current UART baud before attributing a failed test to firmware.
 
@@ -100,4 +102,4 @@ Also confirm the exact Servo model and safe pulse endpoints, and confirm the HC-
 - [STM32F101x8/B, STM32F102x8/B, STM32F103x8/B errata sheet ES096](https://www.st.com/resource/en/errata_sheet/es096-stm32f101x8b-stm32f102x8b-and-stm32f103x8b-mediumdensity-device-limitations-stmicroelectronics.pdf)
 - [Toshiba TB6600HG datasheet](https://toshiba.semicon-storage.com/info/docget.jsp?did=12780&prodName=TB6600HG)
 
-The bare-chip datasheet is listed only as an IC reference; module wiring decisions require the actual module documentation. Physical Servo, HC-04 and TB6600 verification remains `PENDING`.
+The bare-chip datasheet is listed only as an IC reference, not as a module input specification. Physical Servo, HC-04 and TB6600 verification remains `PENDING`.

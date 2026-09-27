@@ -83,6 +83,16 @@ fractional-center follow-up below.
 - Static source review confirms all application `Stepper_Enable`, `Stepper_Disable`, `Stepper_Stop` and `Stepper_MoveSteps` calls are inside YawAxis; UART Stepper commands call YawAxis wrappers. No CubeMX files were changed.
 - Cable limits use an operator-established open-loop reference and cannot detect missed steps, physical hand movement while disabled, or cable/mechanical condition. Ozone/J-Link and all physical motor, current, voltage and clearance checks remain `PENDING`.
 
+## Yaw cable-wrap final review follow-up
+
+- Host CTest: all four targets passed. Direct target counts: Debug 41,029; Release-control-disabled 40,949; Yaw-limits 41,029; fractional-center 41,039; all reported 0 failures.
+- Coverage adds output-axis scale and derived pulse bounds, 20/500 PUL/s acceptance and 19/501 rejection through angle and relative APIs, Protocol acceptance at 500 and rejection at 501, all Debug command enum values 0–9, disable during a running move, idle disable, STOP preservation, fault invalidation, and `cable_margin_valid` telemetry.
+- ARM Debug build passed. RAM 2,664 bytes of 20 KB; Flash 34,804 bytes of 64 KB. ARM Release build passed. RAM 2,672 bytes of 20 KB; Flash 19,704 bytes of 64 KB.
+- No compiler warnings were observed. GNU ld continues to report the existing `LOAD segment with RWX permissions` warning.
+- `arm-none-eabi-nm` found `g_control_debug` in both ELFs and found no `g_debug_state` or `g_debug_command`. `DEBUG_STATE_VERSION` is 4; prior `YawDebugState` fields remain ordered as before and new fields are appended.
+- Static review confirms Yaw production conversion uses `YAW_AXIS_PULSES_PER_REV`; ±800 PUL is derived from configured angle bounds. All application Stepper actuation remains behind YawAxis. No CubeMX, generated peripheral mapping, Pitch limit/smoothing, Debug command numbering, or selected DIP configuration changed.
+- `git diff --check` passed. Ozone/J-Link observation and physical DIP, current, waveform, transmission ratio, pulse-to-platform angle, motor, and cable-clearance checks remain `PENDING`; `YAW_AXIS_SCALE_VERIFIED=0`.
+
 ## Static review checklist
 
 Before publishing a branch or updating this record:

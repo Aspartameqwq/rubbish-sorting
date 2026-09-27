@@ -34,7 +34,7 @@ Core/main
 
 `App` initializes Servo, HC-04, TB6600, Stepper and then both axes. Each `App_Process()` call samples `SystemTime_GetMs()` once, advances HC-04, calls `PitchAxis_Process(now_ms)` and `YawAxis_Process()`, handles Protocol, then Diagnostics. Pitch changes are time based and do not block the loop.
 
-Normal UART Pitch control is `PITCH <signed-mdeg>` and goes through PitchAxis. Absolute Servo angle and raw PWM are Debug-only bench paths; raw Pitch paths are converted back into Pitch coordinates and checked against the same hard range. Debug UART Stepper actions pass through YawAxis: `STEPPER MOVE` uses the relative-pulse cable-limit wrapper, `STEPPER STOP` preserves a valid cable reference, and `STEPPER DISABLE` invalidates it. No Protocol or Diagnostics movement path calls the low-level Stepper move directly.
+Normal UART Pitch control is `PITCH <signed-mdeg>` and goes through PitchAxis. Absolute Servo angle and raw PWM are Debug-only bench paths; raw Pitch paths are converted back into Pitch coordinates and checked against the same hard range. Debug UART Stepper actions pass through YawAxis: `STEPPER MOVE` uses the relative-pulse cable/rate guard, `STEPPER STOP` preserves a valid cable reference, and `STEPPER DISABLE` invalidates it once shutdown completes (while retaining reference through `STOPPING`). No Protocol or Diagnostics movement path calls the low-level Stepper move directly.
 
 ## Data flow
 

@@ -23,7 +23,7 @@ STEPPER STOP
 STEPPER?
 ```
 
-`PITCH` accepts an optional `+` or `-` and an `int32_t` integer number of millidegrees. The PitchAxis then enforces the fixed `-30000..+30000 mdeg` range. Servo/bench fields are unsigned. Step count accepts the full `int32_t` range, including `-2147483648`; frequency is unsigned and must be within the initial 20–10,000 PUL/s software range. One or more ASCII spaces separate tokens; repeated and trailing spaces are accepted. Tabs, missing fields, overflow, extra tokens and trailing non-space data are rejected.
+`PITCH` accepts an optional `+` or `-` and an `int32_t` integer number of millidegrees. The PitchAxis then enforces the fixed `-30000..+30000 mdeg` range. Servo/bench fields are unsigned. Step count accepts the full `int32_t` range, including `-2147483648`; frequency is unsigned. The TB6600 layer accepts its configured 20–10,000 PUL/s range, while YawAxis commands are further restricted to the initial 20–500 PUL/s mechanism range. One or more ASCII spaces separate tokens; repeated and trailing spaces are accepted. Tabs, missing fields, overflow, extra tokens and trailing non-space data are rejected.
 
 ## Commands and responses
 
@@ -35,18 +35,18 @@ STEPPER?
 | `SERVO <0..270>` | Debug-only absolute Servo-angle bench request; converted to Pitch and checked against ±30° | `OK\r\n` | `ERR\r\n` |
 | `SERVO_US <pulse>` | Debug-only raw PWM bench request; inverse-mapped to Pitch and checked against ±30° | `OK\r\n` | `ERR\r\n` |
 | `STEPPER ENABLE` | Debug-only enable through YawAxis; reference must still be set before motion | `OK\r\n` | `ERR\r\n` |
-| `STEPPER DISABLE` | Disable through YawAxis; invalidates cable reference | `OK\r\n` | `ERR\r\n` |
-| `STEPPER MOVE <steps> <frequency>` | Debug-only relative-pulse move through YawAxis hard cable checks | `OK\r\n` | `ERR\r\n` |
+| `STEPPER DISABLE` | Disable through YawAxis; if a graceful stop is needed, reference remains valid through STOPPING and is invalidated once DISABLED | `OK\r\n` | `ERR\r\n` |
+| `STEPPER MOVE <steps> <frequency>` | Debug-only relative-pulse move through YawAxis cable and 20–500 PUL/s checks | `OK\r\n` | `ERR\r\n` |
 | `STEPPER STOP` | Gracefully stop at the next complete pulse boundary; keeps a valid reference | `OK\r\n` | `ERR\r\n` |
 | `STEPPER?` | Read current firmware state | `STEPPER <STATE> POS=<n> REM=<n> FREQ=<n>\r\n` | State is `UNINITIALIZED` or `FAULT` when applicable |
 
 `PITCH 0` means horizontal; `PITCH 5000` and `PITCH -5000` request ±5°. `OK` means the request passed software validation and was scheduled. It is not a motion-complete reply. Pitch moves toward the target with a nonblocking linear response; its default duration is 1000 ms and the configurable range is 200–5000 ms.
 
-Pitch requests outside `-30000..+30000 mdeg` are rejected and never clamped. The hard range cannot be disabled. Raw Servo angle and pulse inputs pass through PitchAxis conversion and the same limit check. Release returns `ERR` for `SERVO <angle>`, `SERVO_US`, `STEPPER ENABLE` and `STEPPER MOVE` because those bench actuation paths are compiled out. `STEPPER DISABLE` and `STEPPER STOP` remain available for recovery; DISABLE invalidates Yaw reference, while STOP preserves it.
+Pitch requests outside `-30000..+30000 mdeg` are rejected and never clamped. The hard range cannot be disabled. Raw Servo angle and pulse inputs pass through PitchAxis conversion and the same limit check. Release returns `ERR` for `SERVO <angle>`, `SERVO_US`, `STEPPER ENABLE` and `STEPPER MOVE` because those bench actuation paths are compiled out. `STEPPER DISABLE` and `STEPPER STOP` remain available for recovery. STOP preserves the reference; DISABLE invalidates it immediately when already idle, or after a requested graceful stop reaches `DISABLED`.
 
-`STEPPER MOVE 0 <valid-frequency>` is a successful no-op in Debug only when the Stepper is enabled and Yaw cable reference is valid. Its signed `steps` count represents PUL pulses, not degrees or full steps; frequency is PUL pulses per second. With the selected 8-microstep setting, 1600 pulses nominally correspond to one revolution of the reported 1.8° motor if directly coupled. Firmware does not read the switches. Positive pulses map to configured logical forward direction; negative pulses map to reverse. Every bench move calls `YawAxis_MoveRelativePulses()`, which checks reference and the final relative pulse position against the mandatory `-800..+800 PUL` cable range before scheduling motion.
+`STEPPER MOVE 0 <valid-frequency>` is a successful no-op in Debug only when the Stepper is enabled and Yaw cable reference is valid. Its signed `steps` count represents PUL pulses, not degrees or full steps; frequency is PUL pulses per second. The current `YAW_AXIS_PULSES_PER_REV=1600` configuration means pulses per Yaw output-axis revolution and assumes the selected 8-microstep row and 1:1 motor-to-platform coupling. The DIP settings and mechanical ratio are unverified. Positive pulses map to configured logical forward direction; negative pulses map to reverse. Every bench move calls `YawAxis_MoveRelativePulses()`, which checks reference, the final relative pulse position against the derived `-800..+800 PUL` cable range, and the Yaw-specific `20..500 PUL/s` rate before scheduling motion.
 
-There is no UART zero-setting command. Before motion, manually place the mechanism at cable neutral while the driver is disabled and issue Ozone `DEBUG_CMD_SET_YAW_ZERO`; then enable and use the UART move command. After `STEPPER DISABLE`, establish cable zero again before another move. Absolute angle targets use the same finite linear coordinate: +170° to -170° travels about -340°, never the +20° wrapped path.
+There is no UART zero-setting command. Before motion, manually place the mechanism at cable neutral while the driver is disabled and issue Ozone `DEBUG_CMD_SET_YAW_ZERO`; then enable and use the UART move command. After `STEPPER DISABLE` has completed, establish cable zero again before another move. Absolute angle targets use the same finite linear coordinate: +170° to -170° travels about -340°, never the +20° wrapped path. The configured range is a software command guard; do not treat it as verified physical travel until DIP, transmission ratio, and small-angle pulse scale have been checked.
 
 Yaw angle targets currently go through `YawAxis` APIs or the Debug Ozone mailbox; no normal UART `YAW` command is defined. See [axis-control.md](axis-control.md) and [debugging.md](debugging.md).
 

@@ -16,6 +16,7 @@ void TestFakes_SetTick(uint32_t tick_ms);
 uint32_t TestFakes_GetTick(void);
 uint32_t TestFakes_GetPwmStartCount(void);
 uint32_t TestFakes_GetPwmStopCount(void);
+void TestFakes_FailNextPwmStart(void);
 GPIO_PinState TestFakes_GetGpioState(GPIO_TypeDef *port, uint16_t pin);
 bool TestFakes_IsTim3PwmConfigured(void);
 uint32_t TestFakes_GetTim3PwmPolarity(void);

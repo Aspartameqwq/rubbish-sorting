@@ -19,10 +19,11 @@ Generated configuration is checked against the `.ioc` and generated sources. Mod
 | TB6600 module marking | PUFEIDE `TB6600`, `DC 9–42VDC` on the user-provided photo | Label transcription; exact board revision and connected supply are unknown |
 | Servo pulse window | 1400–1600 µs, center 1500 µs | Narrow initial test window; calibration required |
 | TB6600 pulse width | 10 µs active width | Initial software value; actual module requirement unverified |
-| Step frequency | 20–10,000 PUL pulses/s | Initial software limits; not hardware verified |
+| TB6600 timer frequency | 20–10,000 PUL pulses/s | Low-level software/timer range; not module verified |
+| Yaw mechanism frequency | 20–500 PUL pulses/s | Initial conservative command limit; not a motor/driver rating |
 | Direction setup | 1 ms nonblocking wait | Initial software value; module timing unverified |
 | Stepper motor | 1.8° step angle, 1.5 A reported current; four leads reported connected to `A+`, `A-`, `B+`, `B-` | User-provided; current rating basis and coil pairing not independently verified |
-| TB6600 DIP settings | Project-selected 8 microstep / 1600 PUL per revolution and 1.5 A label row | SW1 OFF, SW2 ON, SW3 OFF; SW4 ON, SW5 ON, SW6 OFF; actual switch positions/current pending |
+| TB6600 DIP settings / Yaw scale | Current assumption: 8 microstep / `YAW_AXIS_PULSES_PER_REV=1600` PUL per output-axis revolution with 1:1 coupling; 1.5 A label row | SW1 OFF, SW2 ON, SW3 OFF; SW4 ON, SW5 ON, SW6 OFF; actual switch positions, ratio and platform angle pending |
 | TB6600 wiring topology | Selected 3.3 V direct GPIO, common-cathode wiring | See the [wiring source of truth](wiring.md); GPIO current, logic recognition, waveform and motion remain PENDING |
 
 ## Resource allocation

@@ -381,7 +381,7 @@ static void Test_ProtocolStepperAndBounds(void)
     CHECK(YawAxis_SetCurrentPositionAsZero() == YAW_AXIS_STATUS_OK);
 #endif
 
-    TestFakes_FeedUart("STEPPER ENABLE\nSTEPPER MOVE 3 1000\n");
+    TestFakes_FeedUart("STEPPER ENABLE\nSTEPPER MOVE 3 500\n");
     Protocol_Process();
 #if (RAW_BENCH_COMMANDS_ENABLE == 1)
     CHECK(strcmp(TestFakes_TxData(), "OK\r\nOK\r\n") == 0);
@@ -407,6 +407,12 @@ static void Test_ProtocolStepperAndBounds(void)
     Protocol_Process();
     CHECK(strcmp(TestFakes_TxData(), "OK\r\n") == 0);
     CHECK(YawAxis_GetReferenceState() == YAW_REFERENCE_MANUAL);
+    TestFakes_ClearTx();
+    TestFakes_FeedUart("STEPPER MOVE 1 501\n");
+    Protocol_Process();
+    CHECK(strcmp(TestFakes_TxData(), "ERR\r\n") == 0);
+    CHECK(Stepper_GetCommandedPosition() == 3);
+    CHECK(Stepper_GetRemainingSteps() == 0U);
     TestFakes_ClearTx();
 #endif
 
@@ -528,10 +534,12 @@ static void Test_CompleteYawRelativeMove(int32_t delta_pulses)
     const int64_t relative_pulses = (int64_t)expected_position -
                                     YawAxis_GetZeroOffsetPulses();
     const int32_t expected_mdeg = (int32_t)(relative_pulses *
-                                            (ANGLE_MDEG_PER_REV / YAW_PULSES_PER_REV));
+                                            (ANGLE_MDEG_PER_REV /
+                                             YAW_AXIS_PULSES_PER_REV));
     uint32_t pulse_index;
 
-    CHECK(YawAxis_MoveRelativePulses(delta_pulses, 20U) == YAW_AXIS_STATUS_OK);
+    CHECK(YawAxis_MoveRelativePulses(delta_pulses, YAW_STEP_FREQ_MIN_HZ) ==
+          YAW_AXIS_STATUS_OK);
     if (pulse_count == 0U)
     {
         CHECK(!YawAxis_IsBusy());
@@ -679,8 +687,118 @@ static void Test_YawNoShortestPath(void)
     CHECK(YawAxis_GetReferenceState() == YAW_REFERENCE_MANUAL);
 }
 
+static void Test_YawAxisScaleAndFrequencyPolicy(void)
+{
+    CHECK(DEBUG_STATE_VERSION == 4U);
+    CHECK(DEBUG_CMD_NONE == 0);
+    CHECK(DEBUG_CMD_SET_PITCH_MDEG == 1);
+    CHECK(DEBUG_CMD_SET_PITCH_PULSE_US == 2);
+    CHECK(DEBUG_CMD_SET_YAW_MDEG == 3);
+    CHECK(DEBUG_CMD_SET_BOTH_MDEG == 4);
+    CHECK(DEBUG_CMD_SET_YAW_ZERO == 5);
+    CHECK(DEBUG_CMD_YAW_ENABLE == 6);
+    CHECK(DEBUG_CMD_YAW_DISABLE == 7);
+    CHECK(DEBUG_CMD_YAW_STOP == 8);
+    CHECK(DEBUG_CMD_SET_PITCH_RESPONSE_MS == 9);
+    CHECK(YAW_AXIS_PULSES_PER_REV == 1600U);
+    CHECK(YAW_PULSES_PER_REV == YAW_AXIS_PULSES_PER_REV);
+    CHECK((ANGLE_MDEG_PER_REV / YAW_AXIS_PULSES_PER_REV) == 225);
+    CHECK(YAW_CABLE_LIMIT_MIN_PULSES == -800L);
+    CHECK(YAW_CABLE_LIMIT_MAX_PULSES == 800L);
+    CHECK(YAW_STEP_FREQ_MIN_HZ == 20U);
+    CHECK(YAW_STEP_FREQ_MAX_HZ == 500U);
+
+    CHECK(Stepper_Init() == STEPPER_STATUS_OK);
+    CHECK(YawAxis_Init() == YAW_AXIS_STATUS_OK);
+    CHECK(YawAxis_SetCurrentPositionAsZero() == YAW_AXIS_STATUS_OK);
+    CHECK(YawAxis_Enable() == YAW_AXIS_STATUS_OK);
+    CHECK(YawAxis_ValidateTargetMilliDeg(5000, YAW_STEP_FREQ_MIN_HZ) ==
+          YAW_AXIS_STATUS_OK);
+    CHECK(YawAxis_ValidateTargetMilliDeg(5000, YAW_STEP_FREQ_MAX_HZ) ==
+          YAW_AXIS_STATUS_OK);
+    CHECK(YawAxis_ValidateTargetMilliDeg(5000, YAW_STEP_FREQ_MIN_HZ - 1U) ==
+          YAW_AXIS_STATUS_INVALID_ARGUMENT);
+    CHECK(YawAxis_ValidateTargetMilliDeg(5000, YAW_STEP_FREQ_MAX_HZ + 1U) ==
+          YAW_AXIS_STATUS_INVALID_ARGUMENT);
+    CHECK(YawAxis_MoveRelativePulses(0, YAW_STEP_FREQ_MIN_HZ) ==
+          YAW_AXIS_STATUS_OK);
+    CHECK(YawAxis_MoveRelativePulses(0, YAW_STEP_FREQ_MAX_HZ) ==
+          YAW_AXIS_STATUS_OK);
+    CHECK(YawAxis_MoveRelativePulses(0, YAW_STEP_FREQ_MIN_HZ - 1U) ==
+          YAW_AXIS_STATUS_INVALID_ARGUMENT);
+    CHECK(YawAxis_MoveRelativePulses(0, YAW_STEP_FREQ_MAX_HZ + 1U) ==
+          YAW_AXIS_STATUS_INVALID_ARGUMENT);
+}
+
+static void Test_YawDisableDuringRunning(void)
+{
+    uint32_t now;
+
+    CHECK(Stepper_Init() == STEPPER_STATUS_OK);
+    CHECK(YawAxis_Init() == YAW_AXIS_STATUS_OK);
+    CHECK(YawAxis_SetCurrentPositionAsZero() == YAW_AXIS_STATUS_OK);
+    CHECK(YawAxis_Enable() == YAW_AXIS_STATUS_OK);
+    Debug_Init();
+
+    CHECK(YawAxis_MoveRelativePulses(4, 100U) == YAW_AXIS_STATUS_OK);
+    now = TestFakes_GetTick();
+    TestFakes_SetTick(now + STEPPER_DIRECTION_SETUP_MS);
+    YawAxis_Process();
+    CHECK(Stepper_GetState() == STEPPER_STATE_RUNNING);
+    HAL_TIM_PWM_PulseFinishedCallback(&htim3);
+    YawAxis_Process();
+    CHECK(Stepper_GetCommandedPosition() == 1);
+    CHECK(YawAxis_GetCommandedMilliDeg() == 225);
+
+    CHECK(YawAxis_Disable() == YAW_AXIS_STATUS_OK);
+    CHECK(Stepper_GetState() == STEPPER_STATE_STOPPING);
+    CHECK(YawAxis_GetReferenceState() == YAW_REFERENCE_MANUAL);
+    CHECK(YawAxis_GetCommandedMilliDeg() == 225);
+    Debug_Process(100U, 0U);
+    CHECK(g_control_debug.state.yaw.stepper_state == STEPPER_STATE_STOPPING);
+    CHECK(g_control_debug.state.yaw.reference_state == YAW_REFERENCE_MANUAL);
+    CHECK(g_control_debug.state.yaw.cable_margin_valid == 1U);
+    CHECK(g_control_debug.state.yaw.commanded_mdeg == 225);
+
+    HAL_TIM_PWM_PulseFinishedCallback(&htim3);
+    YawAxis_Process();
+    CHECK(Stepper_GetState() == STEPPER_STATE_DISABLED);
+    CHECK(YawAxis_GetReferenceState() == YAW_REFERENCE_INVALID);
+    CHECK(YawAxis_GetCommandedMilliDeg() == INT32_MIN);
+    Debug_Process(120U, 0U);
+    CHECK(g_control_debug.state.yaw.cable_margin_valid == 0U);
+    CHECK(g_control_debug.state.yaw.commanded_mdeg == INT32_MIN);
+    CHECK(g_control_debug.state.yaw.cable_margin_to_min_mdeg == INT32_MIN);
+    CHECK(g_control_debug.state.yaw.cable_remaining_negative_pulses == 0U);
+    CHECK(g_control_debug.state.yaw.cable_remaining_positive_pulses == 0U);
+}
+
+static void Test_YawFaultInvalidatesReference(void)
+{
+    uint32_t now;
+
+    CHECK(Stepper_Init() == STEPPER_STATUS_OK);
+    CHECK(YawAxis_Init() == YAW_AXIS_STATUS_OK);
+    CHECK(YawAxis_SetCurrentPositionAsZero() == YAW_AXIS_STATUS_OK);
+    CHECK(YawAxis_Enable() == YAW_AXIS_STATUS_OK);
+    Debug_Init();
+    CHECK(YawAxis_MoveRelativePulses(2, 100U) == YAW_AXIS_STATUS_OK);
+    now = TestFakes_GetTick();
+    TestFakes_SetTick(now + STEPPER_DIRECTION_SETUP_MS);
+    TestFakes_FailNextPwmStart();
+    YawAxis_Process();
+
+    CHECK(Stepper_GetState() == STEPPER_STATE_FAULT);
+    CHECK(YawAxis_GetReferenceState() == YAW_REFERENCE_INVALID);
+    CHECK(YawAxis_GetCommandedMilliDeg() == INT32_MIN);
+    Debug_Process(200U, 0U);
+    CHECK(g_control_debug.state.yaw.cable_margin_valid == 0U);
+    CHECK(g_control_debug.state.yaw.commanded_mdeg == INT32_MIN);
+}
+
 static void Test_AxisConversionsAndReference(void)
 {
+    CHECK(YAW_AXIS_PULSES_PER_REV == 1600U);
     CHECK(Servo_Init() == SERVO_STATUS_OK);
     CHECK(Stepper_Init() == STEPPER_STATUS_OK);
     CHECK(PitchAxis_Init() == PITCH_AXIS_STATUS_OK);
@@ -897,6 +1015,12 @@ static void Test_DebugTelemetryAndMailbox(void)
     CHECK(g_control_debug.state.yaw.cable_margin_to_max_mdeg == INT32_MIN);
     CHECK(g_control_debug.state.yaw.cable_remaining_negative_pulses == 0U);
     CHECK(g_control_debug.state.yaw.cable_remaining_positive_pulses == 0U);
+    CHECK(g_control_debug.state.yaw.axis_pulses_per_rev == 1600U);
+    CHECK(g_control_debug.state.yaw.mdeg_per_pulse == 225);
+    CHECK(g_control_debug.state.yaw.axis_scale_verified == 0U);
+    CHECK(g_control_debug.state.yaw.frequency_min_hz == YAW_STEP_FREQ_MIN_HZ);
+    CHECK(g_control_debug.state.yaw.frequency_max_hz == YAW_STEP_FREQ_MAX_HZ);
+    CHECK(g_control_debug.state.yaw.cable_margin_valid == 0U);
 
     snapshot_seq = g_control_debug.state.snapshot_seq;
     heartbeat = g_control_debug.state.heartbeat;
@@ -1063,8 +1187,10 @@ static void Test_DebugTelemetryAndMailbox(void)
     CHECK(g_control_debug.command.result == DEBUG_RESULT_DISABLED);
     CHECK(Stepper_GetCommandedPosition() == initial_yaw_position);
 #endif
+    CHECK(YawAxis_Stop() == YAW_AXIS_STATUS_OK);
     Debug_Process(94U, 0U);
 #if (DEBUG_CONTROL_ENABLE == 1)
+    CHECK(g_control_debug.state.yaw.cable_margin_valid == 1U);
     CHECK(g_control_debug.state.yaw.commanded_position_pulses == (initial_yaw_position + 4));
     CHECK(g_control_debug.state.yaw.commanded_mdeg == 900);
     CHECK(g_control_debug.state.yaw.remaining_pulses == 0U);
@@ -1073,6 +1199,11 @@ static void Test_DebugTelemetryAndMailbox(void)
     CHECK(g_control_debug.state.yaw.cable_remaining_negative_pulses == 804U);
     CHECK(g_control_debug.state.yaw.cable_remaining_positive_pulses == 796U);
     CHECK(g_control_debug.state.yaw.cable_limit_reject_count == 0U);
+    CHECK(g_control_debug.state.yaw.axis_pulses_per_rev == YAW_AXIS_PULSES_PER_REV);
+    CHECK(g_control_debug.state.yaw.mdeg_per_pulse == 225);
+    CHECK(g_control_debug.state.yaw.axis_scale_verified == YAW_AXIS_SCALE_VERIFIED);
+    CHECK(g_control_debug.state.yaw.frequency_min_hz == YAW_STEP_FREQ_MIN_HZ);
+    CHECK(g_control_debug.state.yaw.frequency_max_hz == YAW_STEP_FREQ_MAX_HZ);
     CHECK(g_control_debug.state.last_debug_command == DEBUG_CMD_SET_YAW_MDEG);
     CHECK(g_control_debug.state.last_debug_result == DEBUG_RESULT_OK);
     CHECK(g_control_debug.state.pitch.tuning_reject_count == 1U);
@@ -1107,6 +1238,7 @@ static void Test_DebugTelemetryAndMailbox(void)
     CHECK(g_control_debug.state.yaw.commanded_mdeg == INT32_MIN);
     CHECK(g_control_debug.state.yaw.cable_margin_to_min_mdeg == INT32_MIN);
     CHECK(g_control_debug.state.yaw.cable_margin_to_max_mdeg == INT32_MIN);
+    CHECK(g_control_debug.state.yaw.cable_margin_valid == 0U);
 #endif
     CHECK((g_control_debug.state.snapshot_seq & 1U) == 0U);
 }
@@ -1123,6 +1255,9 @@ int main(void)
     Test_YawReferenceLifecycle();
     Test_YawCablePulseBounds();
     Test_YawNoShortestPath();
+    Test_YawAxisScaleAndFrequencyPolicy();
+    Test_YawDisableDuringRunning();
+    Test_YawFaultInvalidatesReference();
     Test_AxisConversionsAndReference();
     Test_PitchLimitsAndTrajectory();
     Test_DebugTelemetryAndMailbox();

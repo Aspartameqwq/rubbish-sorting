@@ -141,7 +141,7 @@ Set the switch lever toward the case's printed `ON` marking. The switch position
 | SW5 | ON | 对应 1.5 A 电流档 |
 | SW6 | OFF | 对应 1.5 A 电流档 |
 
-For the pictured module's table, the selected microstep row is 8 microsteps and 1600 PUL pulses/revolution for a 1.8° motor. That corresponds nominally to 0.225° per PUL pulse with direct coupling. The selected current row is marked `Current(A) 1.5` and `PK Current 1.7`; this is a transcription of the case label, not a measurement or confirmation of how the motor rating is specified. Keep current verification pending.
+For the pictured module's table, the selected microstep row is 8 microsteps and 1600 PUL pulses per motor revolution for a 1.8° motor. Firmware names the output-axis scale `YAW_AXIS_PULSES_PER_REV`; its current value of 1600 assumes a 1:1 coupling from motor to Yaw platform. Under that assumption, one PUL nominally corresponds to 0.225° of platform rotation. The actual switch positions, transmission ratio, and pulse-to-platform angle have not been verified. The selected current row is marked `Current(A) 1.5` and `PK Current 1.7`; this is a transcription of the case label, not a measurement or confirmation of how the motor rating is specified. Keep current verification pending.
 
 ## GPIO 与电流限制
 
@@ -159,7 +159,7 @@ STM32 output current also has aggregate VDD/VSS limits. Do not use the datasheet
 | DIR | HIGH 表示逻辑正向；LOW 表示反向 | 机械转向待实测 |
 | PUL | 高电平有效；PWM1 | 驱动器识别与波形待实测 |
 
-CubeMX starts PB12 and PB13 LOW. `TB6600_Init()` leaves ENA inactive and does not start PWM; `App_Init()` does not call `Stepper_Enable()`. PA6 must remain pulse-free until a move explicitly starts the timer. The 10 µs active pulse width and 20–10,000 PUL/s software limits remain initial software values pending measurement.
+CubeMX starts PB12 and PB13 LOW. `TB6600_Init()` leaves ENA inactive and does not start PWM; `App_Init()` does not call `Stepper_Enable()`. PA6 must remain pulse-free until a move explicitly starts the timer. The 10 µs active pulse width and TB6600-layer 20–10,000 PUL/s timing range remain initial software values pending measurement. YawAxis applies a separate 20–500 PUL/s conservative mechanism command range; 500 is not a driver or motor rating.
 
 ## 首次硬件上电检查
 
@@ -175,8 +175,31 @@ Do these checks with the motor mechanically safe and the driver power disabled u
 8. With TB6600 24 V power still disconnected and the Stepper disabled, manually place Yaw at cable neutral (Pitch wiring naturally routed, without visible twist). In Ozone send `DEBUG_CMD_SET_YAW_ZERO` and confirm `reference_state == MANUAL` and `commanded_mdeg == 0`. Then send `STEPPER ENABLE`, followed by `STEPPER MOVE 100 20`. The repeated low-frequency pulses make PUL+ loaded voltage, active current, HIGH width and LOW width measurable; use a suitable series shunt and scope/peak measurement for PUL current. Measure DIR and ENA current/voltage as well. Stop if any line exceeds the 8 mA project gate or an MCU output falls outside its datasheet-guaranteed output range under load. Send `STEPPER DISABLE` after the measurement so ENA returns LOW; this also invalidates Yaw reference. This unpowered check does not prove that the module recognizes the logic levels.
 9. After the input-current and MCU-output-voltage checks pass, apply the selected 24 V to TB6600 and confirm the measured voltage at VCC/GND. Keep the motor mechanically secured and ENA LOW while checking the powered driver's inactive behavior.
 10. With the motor mechanically secured and the Stepper disabled, manually restore cable neutral and issue Ozone `DEBUG_CMD_SET_YAW_ZERO` again. Enable the Stepper only after confirming `reference_state == MANUAL`. Scope PUL inactive level, HIGH width, LOW width and frequency. Check exactly 1, 2, 10 and 100 pulses and clean stop edges at a low rate.
-11. Verify that the powered driver recognizes ENA and PUL at the selected levels, then establish cable zero while disabled and check logical direction with a mechanically safe low-speed motor test. If the active levels are not recognized, record `DIRECT_GPIO_DRIVE_REJECTED` and stop. If rotation is opposite the project's logical FORWARD, change only `TB6600_DIR_FORWARD_LEVEL`; do not simultaneously swap motor phase leads.
-12. Record module marking, supply voltage, DIP positions, GPIO input currents, waveform measurements, direction result and motor movement. Until recorded, all physical checks below remain PENDING.
+11. With cable clearance confirmed for a small move, command 100 PUL at 20 PUL/s and measure the actual Yaw platform angle. The current 22.5° expectation follows only from 1600 PUL per output revolution and the assumed 1:1 coupling. Do not use a full revolution as the first scale test. If the measured angle differs, stop and update `YAW_AXIS_PULSES_PER_REV` for the actual transmission before relying on the derived ±800 PUL cable range. Record the measured ratio and angle.
+12. Verify that the powered driver recognizes ENA and PUL at the selected levels, then establish cable zero while disabled and check logical direction with a mechanically safe, small-angle reverse move. If the active levels are not recognized, record `DIRECT_GPIO_DRIVE_REJECTED` and stop. If rotation is opposite the project's logical FORWARD, change only `TB6600_DIR_FORWARD_LEVEL`; do not simultaneously swap motor phase leads.
+13. Record module marking, supply voltage, DIP positions, GPIO input currents, waveform measurements, actual Yaw scale, direction result and motor movement. Until recorded, all physical checks below remain PENDING.
+
+## Yaw scale verification gate
+
+The current `YAW_AXIS_PULSES_PER_REV=1600` value is a software configuration
+assumption for one complete Yaw output-axis/platform revolution. Its basis is
+the reported 1.8° motor, the pictured 8-microstep row, and assumed 1:1
+motor-to-platform coupling. Firmware does not read the DIP switches or sense
+the Yaw shaft. Complete and record these checks before treating the software
+cable range as a physical angular boundary:
+
+- [ ] With all power off, visually confirm SW1=OFF, SW2=ON, SW3=OFF and the module's 8-microstep row.
+- [ ] Confirm the actual motor-to-platform coupling and record whether it is 1:1.
+- [ ] With the mechanism secured and cable clearance observed, establish cable zero and test 100 PUL at 20 PUL/s.
+- [ ] Measure the Yaw platform angle; 22.5° is the current theoretical value only under the 1600 PUL/output-revolution assumption.
+- [ ] If the result differs, update `YAW_AXIS_PULSES_PER_REV` for the measured transmission before continuing; the angle-derived pulse bounds then rebuild from that scale.
+- [ ] Record the measured scale. Set `YAW_AXIS_SCALE_VERIFIED=1` only after DIP, transmission ratio, and small-angle pulse-to-platform behavior have all been checked.
+
+Do not rotate a full revolution to discover the scale. Begin with the 100-PUL
+small-angle check, then progress through approximately ±5°, ±30°, ±60° and
+±90° only after confirming cable clearance at each stage. The configured
+±180° endpoints are not verified mechanical safe limits; use a smaller
+software angle range if the real cable route has less travel.
 
 ## 验证状态
 
@@ -187,6 +210,8 @@ Do these checks with the motor mechanically safe and the driver power disabled u
 | 24 V 电源→VCC/GND | 接线方案已选定；实物连接与电压待实测 |
 | 电机绕组→A/B 端子组 | 接线方案已选定；线圈配对尚未独立确认 |
 | SW1 OFF、SW2 ON、SW3 OFF；SW4 ON、SW5 ON、SW6 OFF | 拨码方案已选定；实物位置待检查 |
+| 8 细分与实际传动比 | `YAW_AXIS_PULSES_PER_REV=1600` 当前假设；DIP、1:1 传动和平台比例待检查 |
+| 100 PUL、20 PUL/s 的平台角度 | 当前理论值 22.5°（基于假设）；待实测 |
 | 每路 GPIO 输入电流 ≤8 mA | 待实测 |
 | PUL 电平、脉宽、频率与脉冲计数 | 待实测 |
 | ENA 实际行为 | 待实测 |
@@ -211,4 +236,4 @@ Fill in **Measured** and **Result** only after performing each physical check. U
 | PUL 20 Hz 命令 | 驱动输入端测得稳定的 20 Hz 波形 | — | 待实测 |
 | DIR 转向 | 符合逻辑正向/反向定义 | — | 待实测 |
 | ENA 行为 | TB6600 上电后按预期响应使能/禁用 | — | 待实测 |
-| 1600 个 PUL 脉冲 | 直连且没有丢步时，理论上电机转一圈 | — | 待实测 |
+| 100 个 PUL 脉冲，20 PUL/s | 在当前 1:1 传动假设下，Yaw 平台理论转角约 22.5° | — | 待实测 |

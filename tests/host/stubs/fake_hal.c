@@ -25,6 +25,7 @@ static uint32_t s_tick_ms;
 static uint32_t s_pwm_start_count;
 static uint32_t s_pwm_stop_count;
 static bool s_pwm_active;
+static bool s_fail_next_pwm_start;
 static uint32_t s_gpio_a_state;
 static uint32_t s_gpio_b_state;
 static bool s_tim3_pwm_configured;
@@ -113,6 +114,11 @@ HAL_StatusTypeDef HAL_TIM_PWM_Start_IT(TIM_HandleTypeDef *timer, uint32_t channe
     (void)timer;
     (void)channel;
     s_pwm_start_count++;
+    if (s_fail_next_pwm_start)
+    {
+        s_fail_next_pwm_start = false;
+        return HAL_ERROR;
+    }
     s_pwm_active = true;
     return HAL_OK;
 }
@@ -205,6 +211,11 @@ uint32_t TestFakes_GetPwmStartCount(void)
 uint32_t TestFakes_GetPwmStopCount(void)
 {
     return s_pwm_stop_count;
+}
+
+void TestFakes_FailNextPwmStart(void)
+{
+    s_fail_next_pwm_start = true;
 }
 
 GPIO_PinState TestFakes_GetGpioState(GPIO_TypeDef *port, uint16_t pin)

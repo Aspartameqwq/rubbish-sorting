@@ -6,9 +6,10 @@
 
 #include <limits.h>
 
-#define YAW_MDEG_PER_PULSE (ANGLE_MDEG_PER_REV / YAW_PULSES_PER_REV)
+#define YAW_MDEG_PER_PULSE (ANGLE_MDEG_PER_REV / YAW_AXIS_PULSES_PER_REV)
 
 static bool s_initialized;
+static bool s_reference_invalidate_pending;
 static YawReferenceState s_reference_state = YAW_REFERENCE_INVALID;
 static int32_t s_zero_offset_pulses;
 static int32_t s_target_mdeg = INT32_MIN;
@@ -57,7 +58,7 @@ static bool YawAxis_ConvertTarget(int32_t target_mdeg,
                                   int32_t *relative_pulses,
                                   int32_t *quantized_mdeg)
 {
-    const int64_t numerator = (int64_t)target_mdeg * YAW_PULSES_PER_REV;
+    const int64_t numerator = (int64_t)target_mdeg * YAW_AXIS_PULSES_PER_REV;
     const int64_t denominator = ANGLE_MDEG_PER_REV;
     int64_t rounded_pulses;
     int64_t applied_mdeg;
@@ -94,6 +95,7 @@ static bool YawAxis_ConvertTarget(int32_t target_mdeg,
 YawAxisStatus YawAxis_Init(void)
 {
     s_initialized = false;
+    s_reference_invalidate_pending = false;
     s_reference_state = YAW_REFERENCE_INVALID;
     s_zero_offset_pulses = 0;
     s_target_mdeg = INT32_MIN;
@@ -128,6 +130,7 @@ YawAxisStatus YawAxis_Enable(void)
 YawAxisStatus YawAxis_Disable(void)
 {
     YawAxisStatus status;
+    StepperState stepper_state;
 
     if (!s_initialized)
     {
@@ -135,8 +138,23 @@ YawAxisStatus YawAxis_Disable(void)
         return YAW_AXIS_STATUS_NOT_INITIALIZED;
     }
     status = YawAxis_MapStepperStatus(Stepper_Disable());
-    /* Without feedback, a disabled or faulted axis may have moved by hand. */
-    YawAxis_InvalidateReference();
+    stepper_state = Stepper_GetState();
+    if ((status != YAW_AXIS_STATUS_OK) || (stepper_state == STEPPER_STATE_FAULT))
+    {
+        YawAxis_InvalidateReference();
+        s_reference_invalidate_pending = false;
+    }
+    else if (stepper_state == STEPPER_STATE_STOPPING)
+    {
+        /* Keep the final commanded position observable through graceful stop. */
+        s_reference_invalidate_pending = true;
+    }
+    else
+    {
+        /* Disabled now, or an unexpected state: fail closed on the reference. */
+        YawAxis_InvalidateReference();
+        s_reference_invalidate_pending = false;
+    }
     YawAxis_RecordStatus(status);
     return status;
 }
@@ -157,8 +175,8 @@ YawAxisStatus YawAxis_ValidateTargetMilliDeg(int32_t target_mdeg,
     {
         return YAW_AXIS_STATUS_NOT_REFERENCED;
     }
-    if ((pulse_frequency_hz < TB6600_STEP_FREQ_MIN_HZ) ||
-        (pulse_frequency_hz > TB6600_STEP_FREQ_MAX_HZ))
+    if ((pulse_frequency_hz < YAW_STEP_FREQ_MIN_HZ) ||
+        (pulse_frequency_hz > YAW_STEP_FREQ_MAX_HZ))
     {
         return YAW_AXIS_STATUS_INVALID_ARGUMENT;
     }
@@ -251,8 +269,8 @@ YawAxisStatus YawAxis_MoveRelativePulses(int32_t delta_pulses,
         YawAxis_RecordStatus(YAW_AXIS_STATUS_NOT_REFERENCED);
         return YAW_AXIS_STATUS_NOT_REFERENCED;
     }
-    if ((pulse_frequency_hz < TB6600_STEP_FREQ_MIN_HZ) ||
-        (pulse_frequency_hz > TB6600_STEP_FREQ_MAX_HZ))
+    if ((pulse_frequency_hz < YAW_STEP_FREQ_MIN_HZ) ||
+        (pulse_frequency_hz > YAW_STEP_FREQ_MAX_HZ))
     {
         YawAxis_RecordStatus(YAW_AXIS_STATUS_INVALID_ARGUMENT);
         return YAW_AXIS_STATUS_INVALID_ARGUMENT;
@@ -324,6 +342,7 @@ YawAxisStatus YawAxis_SetCurrentPositionAsZero(void)
 
     s_zero_offset_pulses = Stepper_GetCommandedPosition();
     s_reference_state = YAW_REFERENCE_MANUAL;
+    s_reference_invalidate_pending = false;
     s_target_mdeg = 0;
     s_quantized_target_mdeg = 0;
     YawAxis_RecordStatus(YAW_AXIS_STATUS_OK);
@@ -349,6 +368,17 @@ void YawAxis_Process(void)
     if (s_initialized)
     {
         Stepper_Process();
+        if (Stepper_GetState() == STEPPER_STATE_FAULT)
+        {
+            YawAxis_InvalidateReference();
+            s_reference_invalidate_pending = false;
+        }
+        else if (s_reference_invalidate_pending &&
+                 (Stepper_GetState() == STEPPER_STATE_DISABLED))
+        {
+            YawAxis_InvalidateReference();
+            s_reference_invalidate_pending = false;
+        }
     }
 }
 

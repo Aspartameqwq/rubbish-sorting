@@ -54,11 +54,11 @@ The root build does not include `cmake/stm32cubemx/CMakeLists.txt`, where CubeMX
 
 ### TB6600 first hardware bring-up
 
-The project-selected common-cathode signal wiring, 24 V power connection, motor terminals and DIP positions are maintained only in [Docs/wiring.md](wiring.md). Selected wiring is not hardware verification. Keep driver power off until all signal inputs pass the measured-current and logic-level gate.
+The project-selected common-cathode signal wiring, 24 V power connection, motor terminals and DIP positions are maintained only in [Docs/wiring.md](wiring.md). Selected wiring is not hardware verification. Keep driver power off until the measured-current and MCU output-voltage checks pass; verify powered-module logic recognition during the staged first bring-up.
 
 1. With all power off, confirm switch directions/settings, motor coil pairs, terminal wiring and 24 V polarity.
 2. Power only the STM32. Check PB12/PB13 LOW, PA6 idle with no PUL edges, and verify no 24 V reaches any MCU pin.
-3. Measure active input current and voltage for PUL, DIR and ENA. The project direct-drive gate is at most 8 mA per signal; for pulsed PUL, use a shunt and scope/peak measurement rather than relying on a DMM average. Stop if any line exceeds the gate or 3.3 V is not recognized reliably.
+3. Measure active input current and MCU-driven voltage for PUL, DIR and ENA. The project direct-drive current gate is at most 8 mA per signal; for pulsed PUL, use a shunt and scope/peak measurement rather than relying on a DMM average. Stop if any line exceeds the gate or the loaded MCU output falls outside its datasheet-guaranteed range. Powered-module logic recognition remains a separate check after driver power is applied.
 4. After the electrical gate passes, power the TB6600 from the selected 24 V supply. Check ENA LOW/HIGH physical behavior and capture PUL idle level, high/low widths, frequency and clean stop edges.
 5. Using a mechanically safe motor at the minimum software rate, verify exactly 1, 2, 10 and 100 PUL pulses, direction setup and logical direction. Record actual motor movement and any missed steps.
 6. Record module marking/revision, supply voltage, DIP positions, input currents, waveform values, ENA behavior, direction and movement. Keep every unmeasured result PENDING.

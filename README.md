@@ -5,17 +5,17 @@ STM32F103C8T6 下位机工程，使用 STM32CubeMX 6.12.0、STM32CubeF1 HAL v1.8
 ## 当前状态
 
 - CubeMX 已生成并核对：72 MHz 系统时钟、SWD、TIM2_CH1/PA0、USART1/PA9/PA10、DMA1_CH5 Circular RX、TIM3_CH1/PA6、PB12 DIR、PB13 ENA 和 TIM3 IRQ。
-- Pitch 轴以平台水平为 0°；已安装机构在 Servo 约 130° 时观察为水平，当前锚点为 130000 mdeg 并映射到 1500 µs，属于机械观察的初始值，尚非精密标定。锚点支持后续 mdeg 级精调，Servo 中心计算不会截断小数角度；PWM 输出仍按整数 µs 量化。
-- Pitch 目标硬限制为相对水平 ±30°，不能通过构建选项或 Ozone 运行期关闭。目标变更使用默认 1000 ms、可调 200–5000 ms 的非阻塞线性响应。
+- Pitch 轴以平台水平为 0°。舵机按用户提供的 270° 参考采用 0.5/1.5/2.5 ms 对应 0°/135°/270°；舵机至平台角度比例为用户确认的 1:1。台架实测舵机 148° 时平台水平，当前 `PITCH_LEVEL_SERVO_MDEG=148000`，上电目标脉宽约 1596 µs。
+- Pitch 目标硬限制为相对软件零点 ±45°，不能通过构建选项或 Ozone 运行期关闭。目标变更使用默认 1000 ms、可调 200–5000 ms 的非阻塞线性响应。
 - Yaw 没有滑环，Pitch 线缆会随 Yaw 机构扭转。Yaw 0° 表示线缆自然、无明显扭转的人工 cable-neutral 位置；软件命令限制在 -180°..+180°，脉冲边界由角度和 `YAW_AXIS_PULSES_PER_REV` 推导，不能关闭，也不使用 modulo 或 shortest-path wrap。这些是开环软件命令边界，不是已经验证的机械行程。
 - `YAW_AXIS_PULSES_PER_REV=1600` 表示当前假设下 Yaw 输出平台转一圈所需的 PUL 数：1.8° 电机、8 细分、假定 1:1 传动。DIP、传动比和脉冲到平台转角仍待实测，当前 `YAW_AXIS_SCALE_VERIFIED=0`；225 mdeg/PUL 与 ±800 PUL 都是基于该假设的开环配置值。Yaw 命令速度限制为 20–500 PUL/s，其中 500 是保守 bring-up 设置，不是电机或 TB6600 额定值。启动后参考无效；只能在 Stepper disabled 时重新设置 cable zero。STOP 保留参考；运行中的 DISABLE 在停止完成后才使参考失效。Debug UART 的 `STEPPER MOVE` 同样经过 YawAxis 的位置和速度检查。
 - Pitch/Yaw target、commanded estimate、measured angle 已分离。当前无角度传感器，两个 measured 字段均无效。
 - Yaw cable-wrap 软件命令范围当前设为 ±180°，但它依赖人工 cable-neutral 零点、开环脉冲计数和未验证的轴比例；不是传感器或已验证机械限位。实际线缆余量较小时必须收紧角度参数。Pitch 软件范围同样只是命令保护，不是机械限位或实体验证。
-- Ozone 使用单一全局对象 `g_control_debug` 暴露遥测、运行期 Pitch 响应时间调节和单请求邮箱；Debug 才启用调试/bench 命令，Release 会拒绝。
+- Ozone 使用单一全局对象 `g_control_debug` 暴露遥测、运行期 Pitch 响应时间调节和单请求邮箱；Debug 提供完整调试/bench 命令，Release 只保留 Yaw 设零、使能、禁用和停止的分拣调试命令，并拒绝普通 bench 运动命令。
 - HC-04、命令解析、TB6600 BSP、有限步数 Stepper、整数 profile foundation 和 App health 状态已实现。
 - host 软件测试、ARM Debug/Release 构建和硬件验证状态以当前分支 CI/开发记录为准；未接实物时不得声称硬件通过。
-- TB6600 项目已选择 STM32 3.3 V GPIO 共阴直连，8 细分（每电机轴圈 1600 PUL）及 1.5 A 面板电流档；Yaw 输出轴使用 1600 PUL/rev 的 1:1 传动假设。实际 DIP、输入电流、波形、ENA/DIR 行为、机械比例和平台角度仍待实测。完整接线见 [Docs/wiring.md](Docs/wiring.md)。
-- Servo 1400–1600 µs、HC-04 115200 baud、TB6600 10 µs 脉冲宽度/频率范围和方向建立时间仍需实物验证。
+- TB6600 项目已选择 STM32 3.3 V GPIO 共阴直连，8 细分（每电机轴圈 1600 PUL）及 1.5 A 面板电流档；Yaw 输出轴使用 1600 PUL/rev 的 1:1 传动假设。12 V 台架已验证 ENA 低电平使能、正反向各 100 PUL 的实际转动和回位；20 PUL/s 抖动明显，50 和 100 PUL/s 逐渐平稳。实际 DIP、输入电流、波形、机械比例和准确平台角度仍待测量。完整接线见 [Docs/wiring.md](Docs/wiring.md)。
+- Servo 500–2500 µs 参考映射已按用户提供参数配置，148° 水平锚点已由用户实物确认；HC-04 115200 baud 已在带电 Yaw 测试中持续以 `PING`/`PONG` 验证，TB6600 10 µs 脉冲宽度和方向建立时间仍需实物验证。
 - 步进位置为固件已完成的脉冲计数，不是电机轴反馈位置。没有启用 Stepper DMA、角度传感器、homing 或 PID actuator output。
 
 ## 目录

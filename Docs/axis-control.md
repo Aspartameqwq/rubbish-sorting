@@ -13,8 +13,8 @@ Pitch and Servo use different coordinates. Pitch is relative to the platform's h
 
 | Coordinate | Meaning |
 |---|---|
-| Pitch `0 mdeg` | Platform horizontal |
-| Servo `130000 mdeg` | Mechanically observed near horizontal on the installed linkage |
+| Pitch `0 mdeg` | Platform horizontal at the bench-observed anchor |
+| Servo `148000 mdeg` | Bench-observed Pitch zero; approximately 1596 µs |
 | Pitch `+10000 mdeg` | Platform target 10° in the configured positive direction |
 
 `PITCH_LEVEL_SERVO_MDEG` and `PITCH_SERVO_DIRECTION_SIGN` in [control_debug_config.h](../Config/control_debug_config.h) define the conversion:
@@ -23,21 +23,23 @@ Pitch and Servo use different coordinates. Pitch is relative to the platform's h
 servo target = pitch horizontal anchor + direction sign × Pitch target
 ```
 
-The current anchor is a mechanically observed initial value, not a precision Servo/linkage calibration. `PITCH_LEVEL_SERVO_MDEG` retains full millidegree precision, so a later measured anchor such as 130250 or 130500 mdeg is not truncated during Servo center math. `SERVO_CENTER_ANGLE_DEG` is display/legacy integer-degree data only; control and pulse conversion use `SERVO_CENTER_ANGLE_MDEG`. The PWM output remains quantized to whole microseconds. Positive direction is the current software selection; verify it with a secured mechanism before relying on it.
+The user confirms a 1:1 Servo-to-platform angle magnitude. On the bench, raising Servo from 135° to 165° moved the platform from slightly forward tilt to pronounced backward tilt; the user then confirmed horizontal at Servo 148°. Thus `PITCH_SERVO_DIRECTION_SIGN=+1` makes positive Pitch tilt backward on this mechanism. The Servo uses the user-supplied 270° reference: 0°/135°/270° correspond to 500/1500/2500 µs. Its 135° midpoint is independent of `PITCH_LEVEL_SERVO_MDEG=148000`, the platform's horizontal Servo angle. PWM is quantized to whole microseconds; the configured 148° maps to 1596 µs.
+
+For future horizontal trimming in a Debug build, use the Ozone mailbox field `g_control_debug.command.pitch_pulse_us` with `command.command = 2` (`DEBUG_CMD_SET_PITCH_PULSE_US`), then increment `command.request_seq` as the last write. The raw command is still checked against the ±45° Pitch window. Read `g_control_debug.state.pitch.servo_target_mdeg` for the Servo angle inferred from that pulse, then update `PITCH_LEVEL_SERVO_MDEG` in `Config/control_debug_config.h` and reflash to persist a new anchor. The current 148° observation was made with the UART `SERVO 148` Debug command; the runtime command alone does not persist across reset.
 
 ## Pitch limits and actuation path
 
 Pitch commands are signed integer millidegrees. The enforced range is always:
 
 ```text
--30000 mdeg ≤ Pitch target ≤ +30000 mdeg
+-45000 mdeg ≤ Pitch target ≤ +45000 mdeg
 ```
 
-There is no runtime or build option to disable this Pitch limit. Compile-time checks ensure both configured endpoints map within the Servo logical range. With the current anchor and positive direction, the endpoints map to Servo 100° and 160°.
+There is no runtime or build option to disable this Pitch limit. Compile-time checks ensure both configured endpoints map within the Servo logical range. With the observed 148° anchor and positive direction, the endpoints map to Servo 103° and 193°, or approximately 1263 and 1930 µs.
 
-All application angle requests use `PitchAxis_SetTargetMilliDeg()`. Protocol, Ozone mailbox and future application callers pass through PitchAxis validation before Servo PWM changes. Raw absolute Servo angle and pulse commands are bench-only, compiled out of Release, and checked by converting the requested output back to Pitch coordinates before applying it. Raw pulse input therefore cannot bypass the same ±30° boundary.
+All application angle requests use `PitchAxis_SetTargetMilliDeg()`. Protocol, Ozone mailbox and future application callers pass through PitchAxis validation before Servo PWM changes. Raw absolute Servo angle and pulse commands are bench-only, compiled out of Release, and checked by converting the requested output back to Pitch coordinates before applying it. Raw pulse input therefore cannot bypass the same ±45° boundary.
 
-The software boundary limits commands; it is not a mechanical stop, sensor, or proof that the physical linkage can safely travel the entire configured range. Start hardware checks at 0°, then ±5°, and inspect clearance and direction before trying larger values.
+The user reports no mechanical interference through ±45° Pitch. The software boundary still limits commands without sensing position. After reflashing, check the changed pulse scale at 0°, then ±5°, and inspect direction and platform angle before moving farther.
 
 ## Pitch time-based response
 

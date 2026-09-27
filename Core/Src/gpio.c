@@ -50,7 +50,10 @@ void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, TB6600_DIR_Pin|TB6600_ENA_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(TB6600_DIR_GPIO_Port, TB6600_DIR_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(TB6600_ENA_GPIO_Port, TB6600_ENA_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pins : PBPin PBPin */
   GPIO_InitStruct.Pin = TB6600_DIR_Pin|TB6600_ENA_Pin;

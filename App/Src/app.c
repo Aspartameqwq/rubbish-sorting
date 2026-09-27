@@ -6,6 +6,7 @@
 #include "system_time.h"
 #include "protocol.h"
 #include "servo.h"
+#include "sort_task.h"
 #include "stepper.h"
 #include "tb6600.h"
 #include "yaw_axis.h"
@@ -45,6 +46,7 @@ void App_Init(void)
     }
 
     Protocol_Init();
+    SortTask_Init(s_health_flags);
     Debug_Init();
     s_init_attempted = true;
 }
@@ -59,9 +61,10 @@ void App_Process(void)
     }
 
     HC04_Process();
+    Protocol_Process();
+    SortTask_Process(now_ms);
     PitchAxis_Process(now_ms);
     YawAxis_Process();
-    Protocol_Process();
     Debug_Process(now_ms, s_health_flags);
 }
 

@@ -2,7 +2,7 @@
 
 ## Status
 
-The project separates Pitch and Yaw coordinates from their actuator drivers. PitchAxis owns the relative-to-horizontal target, hard ±30° command range and Servo trajectory. YawAxis owns angle/pulse conversion, manual cable-neutral reference, mandatory ±180°/±800 PUL limits and Stepper scheduling; its position remains open loop. `g_control_debug` exposes Ozone telemetry, tuning and a single-request command mailbox. No angle sensor or PID actuator output is implemented. Hardware behavior remains pending; see [axis control](axis-control.md), [debugging](debugging.md), and [development](development.md).
+The project separates Pitch and Yaw coordinates from their actuator drivers. PitchAxis owns the relative-to-horizontal target, hard ±45° command range and Servo trajectory. YawAxis owns angle/pulse conversion, manual cable-neutral reference, mandatory ±180°/±800 PUL limits and Stepper scheduling; its position remains open loop. `g_control_debug` exposes Ozone telemetry, tuning and a single-request command mailbox. No angle sensor or PID actuator output is implemented. Hardware behavior remains pending; see [axis control](axis-control.md), [debugging](debugging.md), and [development](development.md).
 
 ## Layers and dependencies
 
@@ -54,7 +54,7 @@ The HC-04 DMA buffer is the only transport byte buffer. Protocol owns one fixed 
 
 ## Angle and feedback boundary
 
-Pitch 0° means the platform's mechanically observed horizontal position; the current Servo anchor is approximately 130°. This anchor is not a precision calibration. The software rejects Pitch targets outside ±30°, but software limits cannot establish real mechanical clearance. A smoothed command is still a command estimate, not a measured platform position.
+Pitch 0° is the platform horizontal position observed at Servo 148° (approximately 1596 µs). The user confirms a 1:1 Servo-to-platform angle ratio and clearance for ±45° Pitch. Positive Pitch increases the Servo angle and tilted the platform backward during the bench check. The software rejects targets outside ±45°; its commanded value is not sensor feedback.
 
 Yaw commanded angle comes from completed PUL counts relative to the manual zero offset. Neither axis has measured-angle feedback: both measured fields stay `INT32_MIN` and `measurement_valid=0` until sensor paths are implemented. Absolute Yaw requests require a valid manual reference. PID remains out of scope without valid feedback.
 

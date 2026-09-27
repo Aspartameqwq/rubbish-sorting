@@ -20,6 +20,69 @@
 #define PROTOCOL_MAX_BYTES_PER_PROCESS      64U
 
 /* =========================
+ * Four-box sorting configuration
+ * ========================= */
+
+/*
+ * Mechanical angles and Pitch directions are deliberately uncommissioned.
+ * Set these only after measuring the installed mechanism, then set
+ * SORT_MECHANICAL_CALIBRATION_COMPLETE to 1. Sorting commands are rejected
+ * while the flag is 0.
+ */
+#ifndef SORT_MECHANICAL_CALIBRATION_COMPLETE
+#define SORT_MECHANICAL_CALIBRATION_COMPLETE 0U
+#endif
+#ifndef SORT_YAW_GROUP_13_MDEG
+#define SORT_YAW_GROUP_13_MDEG               0L
+#endif
+#ifndef SORT_YAW_HOME_MDEG
+#define SORT_YAW_HOME_MDEG                   0L
+#endif
+#ifndef SORT_YAW_GROUP_24_MDEG
+#define SORT_YAW_GROUP_24_MDEG               0L
+#endif
+#ifndef SORT_PITCH_HOME_MDEG
+#define SORT_PITCH_HOME_MDEG                 0L
+#endif
+#ifndef SORT_PITCH_DUMP_ANGLE_MDEG
+#define SORT_PITCH_DUMP_ANGLE_MDEG           0L
+#endif
+#ifndef SORT_BOX1_PITCH_DIRECTION
+#define SORT_BOX1_PITCH_DIRECTION             0
+#endif
+#ifndef SORT_BOX2_PITCH_DIRECTION
+#define SORT_BOX2_PITCH_DIRECTION             0
+#endif
+#ifndef SORT_BOX3_PITCH_DIRECTION
+#define SORT_BOX3_PITCH_DIRECTION             0
+#endif
+#ifndef SORT_BOX4_PITCH_DIRECTION
+#define SORT_BOX4_PITCH_DIRECTION             0
+#endif
+
+#ifndef SORT_YAW_STEP_FREQUENCY_HZ
+#define SORT_YAW_STEP_FREQUENCY_HZ            100U
+#endif
+#ifndef SORT_YAW_MOVE_TIMEOUT_MS
+#define SORT_YAW_MOVE_TIMEOUT_MS              30000U
+#endif
+#ifndef SORT_YAW_MOVE_TIMEOUT_MARGIN_MS
+#define SORT_YAW_MOVE_TIMEOUT_MARGIN_MS       5000U
+#endif
+#ifndef SORT_PITCH_MOVE_TIMEOUT_MS
+#define SORT_PITCH_MOVE_TIMEOUT_MS            6000U
+#endif
+#ifndef SORT_DUMP_HOLD_MS
+#define SORT_DUMP_HOLD_MS                     1000U
+#endif
+#ifndef SORT_READY_HEARTBEAT_MS
+#define SORT_READY_HEARTBEAT_MS               1000U
+#endif
+#ifndef SORT_ACTION_HISTORY_CAPACITY
+#define SORT_ACTION_HISTORY_CAPACITY           8U
+#endif
+
+/* =========================
  * TB6600 configuration
  * ========================= */
 
@@ -34,8 +97,8 @@
 #define TB6600_STEP_FREQ_MIN_HZ             20U
 #define TB6600_STEP_FREQ_MAX_HZ             10000U
 
-/* SELECTED: direct 3.3 V common-cathode wiring; electrical behavior verification pending. */
-#define TB6600_ENABLE_ACTIVE_LEVEL          1U
+/* Bench-observed module behavior: PB13 LOW enables holding torque; HIGH disables. */
+#define TB6600_ENABLE_ACTIVE_LEVEL          0U
 /* HIGH means logical FORWARD; verify actual mechanical orientation during bring-up. */
 #define TB6600_DIR_FORWARD_LEVEL            1U
 /* SELECTED active-high PUL polarity; pulse recognition/current verification pending. */

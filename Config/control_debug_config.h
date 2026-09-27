@@ -9,31 +9,31 @@
  * ============================= */
 
 #ifndef PITCH_LEVEL_SERVO_MDEG
-#define PITCH_LEVEL_SERVO_MDEG              130000L
+#define PITCH_LEVEL_SERVO_MDEG              148000L
 #endif
 
 #define SERVO_MIN_ANGLE_DEG                 0L
 #define SERVO_MAX_ANGLE_DEG                 270L
 #define SERVO_MIN_ANGLE_MDEG                (SERVO_MIN_ANGLE_DEG * 1000L)
 #define SERVO_MAX_ANGLE_MDEG                (SERVO_MAX_ANGLE_DEG * 1000L)
-#define SERVO_CENTER_ANGLE_MDEG             PITCH_LEVEL_SERVO_MDEG
+#define SERVO_CENTER_ANGLE_MDEG             135000L
 /* Display / legacy integer-degree value only; never use in calibration math. */
 #define SERVO_CENTER_ANGLE_DEG              (SERVO_CENTER_ANGLE_MDEG / 1000L)
 
-/* INITIAL pulse window; verify the actual servo and linkage before increasing it. */
-#define SERVO_MIN_PULSE_US                  1400U
+/* User-supplied 270-degree Servo reference: 0.5/1.5/2.5 ms at 0/135/270 deg. */
+#define SERVO_MIN_PULSE_US                  500U
 #define SERVO_CENTER_PULSE_US               1500U
-#define SERVO_MAX_PULSE_US                  1600U
+#define SERVO_MAX_PULSE_US                  2500U
 #ifndef SERVO_CALIBRATION_VALID
 #define SERVO_CALIBRATION_VALID             0U
 #endif
 
-/* User-adjustable mdeg anchor; mechanically observed near Servo 130 degrees. */
+/* Bench-observed horizontal at Servo 148 deg; 1:1 Pitch-to-Servo angle relation. */
 #define PITCH_SERVO_DIRECTION_SIGN          (+1)
 
 /* Hard logical Pitch limits; there is intentionally no disable switch. */
-#define PITCH_SOFT_MIN_MDEG                 (-30000L)
-#define PITCH_SOFT_MAX_MDEG                 30000L
+#define PITCH_SOFT_MIN_MDEG                 (-45000L)
+#define PITCH_SOFT_MAX_MDEG                 45000L
 
 /* =============================
  * Pitch trajectory

@@ -155,6 +155,25 @@ static void Test_InitializeModules(void)
     TestFakes_SetTick(100U);
 }
 
+static void Test_FractionalServoCenter(void)
+{
+#if (PITCH_LEVEL_SERVO_MDEG == 130500L)
+    uint16_t pulse_us = 0U;
+    int32_t angle_mdeg = INT32_MIN;
+
+    CHECK(SERVO_CENTER_ANGLE_MDEG == 130500L);
+    CHECK(SERVO_CENTER_ANGLE_DEG == 130L);
+    CHECK(PitchAxis_Init() == PITCH_AXIS_STATUS_OK);
+    CHECK(PitchAxis_GetTargetMilliDeg() == 0);
+    CHECK(PitchAxis_GetServoTargetMilliDeg() == 130500L);
+    CHECK(PitchAxis_GetPulseUs() == SERVO_CENTER_PULSE_US);
+    CHECK(Servo_ConvertAngleMilliDegToPulseUs(130500L, &pulse_us) == SERVO_STATUS_OK);
+    CHECK(pulse_us == SERVO_CENTER_PULSE_US);
+    CHECK(Servo_ConvertPulseUsToAngleMilliDeg(pulse_us, &angle_mdeg) == SERVO_STATUS_OK);
+    CHECK(angle_mdeg == 130500L);
+#endif
+}
+
 static void Test_ServoStateAndProtocol(void)
 {
     CHECK(Servo_IsAngleValid());
@@ -549,6 +568,7 @@ static void Test_AxisConversionsAndReference(void)
 static void Test_PitchLimitsAndTrajectory(void)
 {
     uint32_t now = TestFakes_GetTick();
+    uint16_t expected_pulse_us;
 
     CHECK(Servo_Init() == SERVO_STATUS_OK);
     CHECK(PitchAxis_Init() == PITCH_AXIS_STATUS_OK);
@@ -610,18 +630,30 @@ static void Test_PitchLimitsAndTrajectory(void)
     CHECK(PitchAxis_SetTargetMilliDeg(-30000) == PITCH_AXIS_STATUS_OK);
     PitchAxis_Process(now + 200U);
     CHECK(PitchAxis_GetCommandedMilliDeg() == -30000);
-    CHECK(PitchAxis_GetServoTargetMilliDeg() == 100000);
-    CHECK(PitchAxis_GetPulseUs() == 1477U);
+    CHECK(PitchAxis_GetServoTargetMilliDeg() ==
+          (PITCH_LEVEL_SERVO_MDEG + (PITCH_SERVO_DIRECTION_SIGN * PITCH_SOFT_MIN_MDEG)));
+    CHECK(Servo_ConvertAngleMilliDegToPulseUs(PitchAxis_GetServoTargetMilliDeg(),
+                                              &expected_pulse_us) == SERVO_STATUS_OK);
+    CHECK(PitchAxis_GetPulseUs() == expected_pulse_us);
 
     CHECK(PitchAxis_SetTargetMilliDeg(30000) == PITCH_AXIS_STATUS_OK);
     PitchAxis_Process(now + 400U);
     CHECK(PitchAxis_GetCommandedMilliDeg() == 30000);
-    CHECK(PitchAxis_GetServoTargetMilliDeg() == 160000);
-    CHECK(PitchAxis_GetPulseUs() == 1521U);
+    CHECK(PitchAxis_GetServoTargetMilliDeg() ==
+          (PITCH_LEVEL_SERVO_MDEG + (PITCH_SERVO_DIRECTION_SIGN * PITCH_SOFT_MAX_MDEG)));
+    CHECK(Servo_ConvertAngleMilliDegToPulseUs(PitchAxis_GetServoTargetMilliDeg(),
+                                              &expected_pulse_us) == SERVO_STATUS_OK);
+    CHECK(PitchAxis_GetPulseUs() == expected_pulse_us);
 
 #if (RAW_BENCH_COMMANDS_ENABLE == 1)
-    CHECK(PitchAxis_SetRawServoAngleMilliDeg(99000) == PITCH_AXIS_STATUS_LIMIT);
-    CHECK(PitchAxis_SetRawServoAngleMilliDeg(100000) == PITCH_AXIS_STATUS_OK);
+    CHECK(PitchAxis_SetRawServoAngleMilliDeg(PITCH_LEVEL_SERVO_MDEG +
+                                            (PITCH_SERVO_DIRECTION_SIGN *
+                                             (PITCH_SOFT_MIN_MDEG - 1000))) ==
+          PITCH_AXIS_STATUS_LIMIT);
+    CHECK(PitchAxis_SetRawServoAngleMilliDeg(PITCH_LEVEL_SERVO_MDEG +
+                                            (PITCH_SERVO_DIRECTION_SIGN *
+                                             (PITCH_SOFT_MIN_MDEG + 1000))) ==
+          PITCH_AXIS_STATUS_OK);
     CHECK(PitchAxis_IsRawPulseMode());
     CHECK(PitchAxis_GetTargetMilliDeg() == INT32_MIN);
     CHECK(PitchAxis_GetCommandedMilliDeg() >= PITCH_SOFT_MIN_MDEG);
@@ -629,7 +661,10 @@ static void Test_PitchLimitsAndTrajectory(void)
     CHECK(PitchAxis_GetCommandedMilliDeg() >= PITCH_SOFT_MIN_MDEG);
     CHECK(!PitchAxis_IsRawPulseMode());
 #else
-    CHECK(PitchAxis_SetRawServoAngleMilliDeg(100000) == PITCH_AXIS_STATUS_DISABLED);
+    CHECK(PitchAxis_SetRawServoAngleMilliDeg(PITCH_LEVEL_SERVO_MDEG +
+                                            (PITCH_SERVO_DIRECTION_SIGN *
+                                             (PITCH_SOFT_MIN_MDEG + 1000))) ==
+          PITCH_AXIS_STATUS_DISABLED);
 #endif
 }
 
@@ -820,6 +855,7 @@ int main(void)
     Test_TimingConversion();
     Test_StepperProfile();
     Test_InitializeModules();
+    Test_FractionalServoCenter();
     Test_ServoStateAndProtocol();
     Test_StepperFiniteMoves();
     Test_ProtocolStepperAndBounds();

@@ -6,8 +6,8 @@
 #include <limits.h>
 #include <stddef.h>
 
-#if (SERVO_CENTER_ANGLE_DEG <= SERVO_MIN_ANGLE_DEG) || \
-    (SERVO_CENTER_ANGLE_DEG >= SERVO_MAX_ANGLE_DEG)
+#if (SERVO_CENTER_ANGLE_MDEG <= SERVO_MIN_ANGLE_MDEG) || \
+    (SERVO_CENTER_ANGLE_MDEG >= SERVO_MAX_ANGLE_MDEG)
 #error "Servo center angle must be strictly inside the configured angle range"
 #endif
 
@@ -33,16 +33,16 @@ static uint16_t Servo_AngleToPulse(int32_t angle_mdeg)
     int64_t denominator;
     int64_t pulse_us;
 
-    if (angle_mdeg <= ((int32_t)SERVO_CENTER_ANGLE_DEG * 1000))
+    if (angle_mdeg <= SERVO_CENTER_ANGLE_MDEG)
     {
         angle_start_mdeg = (int64_t)SERVO_MIN_ANGLE_DEG * 1000;
-        angle_end_mdeg = (int64_t)SERVO_CENTER_ANGLE_DEG * 1000;
+        angle_end_mdeg = SERVO_CENTER_ANGLE_MDEG;
         pulse_start_us = SERVO_MIN_PULSE_US;
         pulse_end_us = SERVO_CENTER_PULSE_US;
     }
     else
     {
-        angle_start_mdeg = (int64_t)SERVO_CENTER_ANGLE_DEG * 1000;
+        angle_start_mdeg = SERVO_CENTER_ANGLE_MDEG;
         angle_end_mdeg = (int64_t)SERVO_MAX_ANGLE_DEG * 1000;
         pulse_start_us = SERVO_CENTER_PULSE_US;
         pulse_end_us = SERVO_MAX_PULSE_US;
@@ -70,13 +70,13 @@ static int32_t Servo_PulseToAngle(uint16_t pulse_us)
         pulse_start_us = SERVO_MIN_PULSE_US;
         pulse_end_us = SERVO_CENTER_PULSE_US;
         angle_start_mdeg = (int64_t)SERVO_MIN_ANGLE_DEG * 1000;
-        angle_end_mdeg = (int64_t)SERVO_CENTER_ANGLE_DEG * 1000;
+        angle_end_mdeg = SERVO_CENTER_ANGLE_MDEG;
     }
     else
     {
         pulse_start_us = SERVO_CENTER_PULSE_US;
         pulse_end_us = SERVO_MAX_PULSE_US;
-        angle_start_mdeg = (int64_t)SERVO_CENTER_ANGLE_DEG * 1000;
+        angle_start_mdeg = SERVO_CENTER_ANGLE_MDEG;
         angle_end_mdeg = (int64_t)SERVO_MAX_ANGLE_DEG * 1000;
     }
 

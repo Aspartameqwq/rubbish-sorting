@@ -7,12 +7,17 @@
  * Servo calibration and Pitch reference
  * ============================= */
 
+#ifndef PITCH_LEVEL_SERVO_MDEG
+#define PITCH_LEVEL_SERVO_MDEG              130000L
+#endif
+
 #define SERVO_MIN_ANGLE_DEG                 0L
 #define SERVO_MAX_ANGLE_DEG                 270L
-#define SERVO_CENTER_ANGLE_DEG              (PITCH_LEVEL_SERVO_MDEG / 1000L)
 #define SERVO_MIN_ANGLE_MDEG                (SERVO_MIN_ANGLE_DEG * 1000L)
 #define SERVO_MAX_ANGLE_MDEG                (SERVO_MAX_ANGLE_DEG * 1000L)
 #define SERVO_CENTER_ANGLE_MDEG             PITCH_LEVEL_SERVO_MDEG
+/* Display / legacy integer-degree value only; never use in calibration math. */
+#define SERVO_CENTER_ANGLE_DEG              (SERVO_CENTER_ANGLE_MDEG / 1000L)
 
 /* INITIAL pulse window; verify the actual servo and linkage before increasing it. */
 #define SERVO_MIN_PULSE_US                  1400U
@@ -22,8 +27,7 @@
 #define SERVO_CALIBRATION_VALID             0U
 #endif
 
-/* The installed platform is mechanically horizontal near servo 130 degrees. */
-#define PITCH_LEVEL_SERVO_MDEG              130000L
+/* User-adjustable mdeg anchor; mechanically observed near Servo 130 degrees. */
 #define PITCH_SERVO_DIRECTION_SIGN          (+1)
 
 /* Hard logical Pitch limits; there is intentionally no disable switch. */

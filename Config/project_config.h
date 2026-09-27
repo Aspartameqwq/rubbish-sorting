@@ -47,9 +47,11 @@
 #define TB6600_STEP_FREQ_MIN_HZ             20U
 #define TB6600_STEP_FREQ_MAX_HZ             10000U
 
-/* INITIAL_ASSUMPTION; TO_BE_CONFIRMED against module wiring and polarity. */
+/* SELECTED: direct 3.3 V common-cathode wiring; electrical behavior verification pending. */
 #define TB6600_ENABLE_ACTIVE_LEVEL          1U
+/* HIGH means logical FORWARD; verify actual mechanical orientation during bring-up. */
 #define TB6600_DIR_FORWARD_LEVEL            1U
+/* SELECTED active-high PUL polarity; pulse recognition/current verification pending. */
 #define TB6600_PULSE_ACTIVE_LEVEL           1U
 
 /* =========================

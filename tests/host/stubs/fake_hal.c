@@ -25,12 +25,35 @@ static uint32_t s_tick_ms;
 static uint32_t s_pwm_start_count;
 static uint32_t s_pwm_stop_count;
 static bool s_pwm_active;
+static uint32_t s_gpio_a_state;
+static uint32_t s_gpio_b_state;
+static bool s_tim3_pwm_configured;
+static uint32_t s_tim3_pwm_polarity;
 
 void HAL_GPIO_WritePin(GPIO_TypeDef *port, uint16_t pin, GPIO_PinState state)
 {
-    (void)port;
-    (void)pin;
-    (void)state;
+    uint32_t *port_state = NULL;
+
+    if (port == GPIOA)
+    {
+        port_state = &s_gpio_a_state;
+    }
+    else if (port == GPIOB)
+    {
+        port_state = &s_gpio_b_state;
+    }
+
+    if (port_state != NULL)
+    {
+        if (state == GPIO_PIN_SET)
+        {
+            *port_state |= pin;
+        }
+        else
+        {
+            *port_state &= ~((uint32_t)pin);
+        }
+    }
 }
 
 uint32_t HAL_GetTick(void)
@@ -107,8 +130,12 @@ HAL_StatusTypeDef HAL_TIM_PWM_ConfigChannel(TIM_HandleTypeDef *timer,
                                              TIM_OC_InitTypeDef *config,
                                              uint32_t channel)
 {
-    (void)channel;
     timer->compare1 = config->Pulse;
+    if ((timer == &htim3) && (channel == TIM_CHANNEL_1))
+    {
+        s_tim3_pwm_configured = true;
+        s_tim3_pwm_polarity = config->OCPolarity;
+    }
     return HAL_OK;
 }
 
@@ -178,4 +205,34 @@ uint32_t TestFakes_GetPwmStartCount(void)
 uint32_t TestFakes_GetPwmStopCount(void)
 {
     return s_pwm_stop_count;
+}
+
+GPIO_PinState TestFakes_GetGpioState(GPIO_TypeDef *port, uint16_t pin)
+{
+    uint32_t port_state;
+
+    if (port == GPIOA)
+    {
+        port_state = s_gpio_a_state;
+    }
+    else if (port == GPIOB)
+    {
+        port_state = s_gpio_b_state;
+    }
+    else
+    {
+        return GPIO_PIN_RESET;
+    }
+
+    return ((port_state & pin) != 0U) ? GPIO_PIN_SET : GPIO_PIN_RESET;
+}
+
+bool TestFakes_IsTim3PwmConfigured(void)
+{
+    return s_tim3_pwm_configured;
+}
+
+uint32_t TestFakes_GetTim3PwmPolarity(void)
+{
+    return s_tim3_pwm_polarity;
 }

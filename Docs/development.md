@@ -26,12 +26,12 @@ Host tests use the native compiler and replace only HAL/TIM/GPIO and UART transp
 
 ## Round 2 verification record
 
-- Host C test target: passed; 40,542 checks cover Servo logical/raw state and bounds, command framing/parsing and response, exact 1/2/10/100 pulse termination, graceful stop/direction setup, signed steps including `INT32_MIN`, timing conversion, profile symmetry/range and extreme inputs.
+- Host C test target: passed; 40,558 checks cover Servo logical/raw state and bounds, command framing/parsing and response, exact 1/2/10/100 pulse termination, graceful stop/direction setup, signed steps including `INT32_MIN`, timing conversion, profile symmetry/range and extreme inputs, plus TB6600 startup, GPIO direction/enable levels and active-high PWM configuration.
 - Debug: configure/build passed. RAM 2,296 bytes of 20 KB; Flash 24,544 bytes of 64 KB.
 - Release: configure/build passed. RAM 2,304 bytes of 20 KB; Flash 16,724 bytes of 64 KB.
 - Firmware compile produced no compiler warnings after the Servo lower-bound check was made warning-free. GNU ld continues to report the existing `LOAD segment with RWX permissions` linker warning; linker-script changes are outside this round.
 - CubeMX files were reviewed after user generation: `.ioc`, TIM3 setup, PA6 AF push-pull, PB12/PB13 GPIO initialization, `TIM3_IRQHandler`, and `MX_TIM3_Init()` before `App_Init()`. The checked CMake build resolved CubeF1 through the user-managed module instead of the generated CMake file.
-- Hardware checks remain `PENDING`; no board movement, module wiring, waveform measurement, HC-04 pairing, or Servo calibration was performed.
+- The selected TB6600 wiring and DIP settings are documented in [wiring.md](wiring.md). Electrical and motion checks remain `PENDING`; no board movement, module input-current or waveform measurement, HC-04 pairing, or Servo calibration was performed.
 
 ## Static review checklist
 
@@ -52,13 +52,19 @@ The root build does not include `cmake/stm32cubemx/CMakeLists.txt`, where CubeMX
 
 ## Physical verification order
 
-No physical verification has been done in this round. Before enabling a real driver or moving a motor:
+### TB6600 first hardware bring-up
 
-1. Confirm the exact commercial TB6600 module input topology, optocoupler current, 3.3 V compatibility, common ground, ENA/DIR/PUL polarity and motor current settings.
-2. Confirm pulse width and safe maximum frequency from the module documentation and measurement; current values are initial software assumptions only.
-3. With the motor disconnected, scope PUL inactive level, pulse width and rate. Verify exactly 1, 2, 10 and 100 finite pulses and stop edges.
-4. Verify DIR setup time and direction mapping before connecting a mechanically safe motor.
-5. Test Servo near center before any endpoint exploration; calibrate the actual model and safe pulse range.
-6. Confirm HC-04 variant, UART baud, supply/logic levels and pairing before link tests.
+The project-selected common-cathode signal wiring, 24 V power connection, motor terminals and DIP positions are maintained only in [Docs/wiring.md](wiring.md). Selected wiring is not hardware verification. Keep driver power off until the measured-current and MCU output-voltage checks pass; verify powered-module logic recognition during the staged first bring-up.
+
+1. With all power off, confirm switch directions/settings, motor coil pairs, terminal wiring and 24 V polarity.
+2. Power only the STM32. Check PB12/PB13 LOW, PA6 idle with no PUL edges, and verify no 24 V reaches any MCU pin.
+3. Measure active input current and MCU-driven voltage for PUL, DIR and ENA. The project direct-drive current gate is at most 8 mA per signal; for pulsed PUL, use a shunt and scope/peak measurement rather than relying on a DMM average. Stop if any line exceeds the gate or the loaded MCU output falls outside its datasheet-guaranteed range. Powered-module logic recognition remains a separate check after driver power is applied.
+4. After the electrical gate passes, power the TB6600 from the selected 24 V supply. Check ENA LOW/HIGH physical behavior and capture PUL idle level, high/low widths, frequency and clean stop edges.
+5. Using a mechanically safe motor at the minimum software rate, verify exactly 1, 2, 10 and 100 PUL pulses, direction setup and logical direction. Record actual motor movement and any missed steps.
+6. Record module marking/revision, supply voltage, DIP positions, input currents, waveform values, ENA behavior, direction and movement. Keep every unmeasured result PENDING.
+
+No physical TB6600 verification has been performed by Codex. The values in software are initial limits until the measurement record supports any change.
+
+Also test Servo near center before endpoint exploration and calibrate the actual model and safe pulse range. Confirm HC-04 variant, UART baud, supply/logic levels and pairing before link tests.
 
 Keep **configuration checked**, **build verified**, **static review checked**, and **hardware verified** as separate claims. A build does not prove module compatibility, emitted waveform quality, motor movement, shaft position or Servo calibration.

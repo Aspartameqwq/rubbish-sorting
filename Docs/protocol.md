@@ -22,7 +22,7 @@ STEPPER STOP
 STEPPER?
 ```
 
-Numeric fields require digits and explicit overflow/range validation. Servo fields are unsigned. Step count accepts an optional `+` or `-` and the full `int32_t` range, including `-2147483648`; frequency is unsigned and must be in the configured 20–10,000 steps/s initial software range. One or more ASCII spaces separate tokens; repeated and trailing spaces are accepted. Tabs, missing fields, overflow, extra tokens, and trailing non-space data are rejected.
+Numeric fields require digits and explicit overflow/range validation. Servo fields are unsigned. Step count accepts an optional `+` or `-` and the full `int32_t` range, including `-2147483648`; frequency is unsigned and must be in the configured 20–10,000 PUL pulses/s initial software range. One or more ASCII spaces separate tokens; repeated and trailing spaces are accepted. Tabs, missing fields, overflow, extra tokens, and trailing non-space data are rejected.
 
 ## Commands and responses
 
@@ -38,7 +38,7 @@ Numeric fields require digits and explicit overflow/range validation. Servo fiel
 | `STEPPER STOP` | Gracefully stop at the next completed PUL active width | `OK\r\n` | `ERR\r\n` |
 | `STEPPER?` | Query current firmware state | `STEPPER <STATE> POS=<n> REM=<n> FREQ=<n>\r\n` | State is `UNINITIALIZED` or `FAULT` when applicable |
 
-`STEPPER MOVE 0 <valid-frequency>` is a successful no-op. Positive steps map to configured forward direction; negative steps map to reverse. A move is rejected while another move is setting direction, running or stopping, while disabled, or if the resulting commanded position would exceed `int32_t` bounds.
+`STEPPER MOVE 0 <valid-frequency>` is a successful no-op. The signed `steps` value is a count of PUL pulses, not degrees or motor full steps; frequency is PUL pulses per second. With the selected 8-microstep setting, 1600 pulses nominally correspond to one revolution of the reported 1.8° motor if directly coupled. Firmware does not read the switches or convert angles. See [Docs/wiring.md](wiring.md) for the selected settings. Positive pulses map to configured logical forward direction; negative pulses map to reverse. A move is rejected while another move is setting direction, running or stopping, while disabled, or if the resulting commanded position would exceed `int32_t` bounds.
 
 Example:
 

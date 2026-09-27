@@ -120,7 +120,25 @@ static void Test_InitializeModules(void)
 {
     CHECK(Servo_Init() == SERVO_STATUS_OK);
     CHECK(TB6600_Init() == TB6600_STATUS_OK);
+    CHECK(!TB6600_IsEnabled());
+    CHECK(!TB6600_IsPulseRunning());
+    CHECK(TestFakes_GetPwmStartCount() == 0U);
+    CHECK(TestFakes_IsTim3PwmConfigured());
+    CHECK(TestFakes_GetTim3PwmPolarity() == TIM_OCPOLARITY_HIGH);
+    CHECK(TestFakes_GetGpioState(TB6600_ENA_GPIO_Port, TB6600_ENA_Pin) == GPIO_PIN_RESET);
+    CHECK(TestFakes_GetGpioState(TB6600_DIR_GPIO_Port, TB6600_DIR_Pin) == GPIO_PIN_RESET);
+
+    CHECK(TB6600_Enable() == TB6600_STATUS_OK);
+    CHECK(TestFakes_GetGpioState(TB6600_ENA_GPIO_Port, TB6600_ENA_Pin) == GPIO_PIN_SET);
+    CHECK(TB6600_Disable() == TB6600_STATUS_OK);
+    CHECK(TestFakes_GetGpioState(TB6600_ENA_GPIO_Port, TB6600_ENA_Pin) == GPIO_PIN_RESET);
+    CHECK(TB6600_SetDirection(TB6600_DIRECTION_FORWARD) == TB6600_STATUS_OK);
+    CHECK(TestFakes_GetGpioState(TB6600_DIR_GPIO_Port, TB6600_DIR_Pin) == GPIO_PIN_SET);
+    CHECK(TB6600_SetDirection(TB6600_DIRECTION_REVERSE) == TB6600_STATUS_OK);
+    CHECK(TestFakes_GetGpioState(TB6600_DIR_GPIO_Port, TB6600_DIR_Pin) == GPIO_PIN_RESET);
+
     CHECK(Stepper_Init() == STEPPER_STATUS_OK);
+    CHECK(!Stepper_IsEnabled());
     Protocol_Init();
     TestFakes_ResetUart();
     TestFakes_SetTick(100U);

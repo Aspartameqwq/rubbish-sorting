@@ -35,6 +35,8 @@ Host tests use the native compiler and replace only HAL/TIM/GPIO and UART transp
 
 ## Round 3 verification record
 
+This is a historical snapshot of the preceding branch. Round 4 replaces `g_debug_state` and `g_debug_command` with `g_control_debug`; use the Round 4 record below for the current interface.
+
 - Host CTest: three targets passed. Debug-control target: 40,671 checks; Release-control-disabled target: 40,665 checks; enabled-placeholder-limits target: 40,636 checks; all reported 0 failures.
 - The host coverage includes Pitch's 130°→1500 µs logical anchor and PWM-quantized command estimate; 0°/270° endpoints; raw pulse invalidation; Yaw 1600 PUL/rev and signed nearest-pulse conversion; 225 mdeg/PUL; manual zero offset; requested/quantized target distinction; enabled/disabled limit behavior; sensor-invalid telemetry; heartbeat timing; mailbox sequence/acknowledgment; and Release no-motion behavior.
 - Debug: configure/build passed. RAM 2,520 bytes of 20 KB; Flash 30,788 bytes of 64 KB.
@@ -44,13 +46,24 @@ Host tests use the native compiler and replace only HAL/TIM/GPIO and UART transp
 - The user regenerated CubeMX output. `.ioc` now lists `MX_TIM3_Init` in `ProjectManager.functionlistsort`; `main.c` calls it after `MX_USART1_UART_Init()` and before `App_Init()`. TIM3 PSC 71, ARR 49999, CH1 pulse 10, IRQ and PA6 mapping were reviewed. CubeMX's rewritten generated CMake file contained absolute local package paths and was excluded; the root build uses the reviewed package resolver.
 - Host simulation and target builds do not verify Servo calibration, TB6600 signal-return continuity, GPIO input current, 3.3 V logic recognition, actual pulse waveform, motor direction/movement or physical angle feedback. Those checks remain `PENDING`.
 
+## Round 4 verification record
+
+- Host CTest: all three targets passed. Debug-control/raw-bench enabled: 40,760 checks; Release-control/raw-bench disabled: 40,725 checks; Yaw-limit variant: 40,731 checks; all reported 0 failures.
+- Coverage includes Pitch 0° horizontal coordinate and the observed 130° Servo anchor, fixed ±30° software limits, raw angle/pulse conversion checks, normal signed `PITCH` protocol parsing, Release raw-command rejection, 20 ms trajectory updates, 1000 ms midpoint interpolation, retarget continuity, 200–5000 ms response-time validation/latching, runtime Ozone tuning, command acknowledgement/clearing, and even/odd snapshot sequencing.
+- ARM Debug build passed. RAM 2,600 bytes of 20 KB; Flash 33,260 bytes of 64 KB.
+- ARM Release build passed. RAM 2,608 bytes of 20 KB; Flash 18,780 bytes of 64 KB.
+- No compiler warnings were observed. GNU ld reports the existing `LOAD segment with RWX permissions` warning.
+- `arm-none-eabi-nm` found the external `g_control_debug` symbol in both ELFs. This confirms linked global data, not a live Ozone/J-Link session.
+- `git diff --check` passed. The source audit found application Protocol/Diagnostics call through PitchAxis/YawAxis, with only the documented Debug-gated raw paths reaching low-level bench APIs.
+- Software builds and host tests do not verify physical Servo travel/direction, actual safe pulse range, board-level input/output levels, TB6600 waveform, motor movement or mechanical clearance. These remain `PENDING`.
+
 ## Static review checklist
 
 Before publishing a branch or updating this record:
 
 1. Check the branch base, working tree and generated-code diff.
-2. Confirm no peripheral access leaks above the BSP and no HAL include leaks into the Motion profile.
-3. Review integer overflow, signed parsing, exact pulse termination, direction setup and IRQ callback work.
+2. Confirm no peripheral access leaks above the BSP and no HAL include leaks into the Motion profile; verify the only control/debug configuration surface is synchronized.
+3. Review integer overflow, signed parsing, Pitch-to-Servo coordinate conversion and hard limits, trajectory timing/retargeting, exact pulse termination, direction setup and IRQ callback work.
 4. Run host tests and clean Debug/Release builds; distinguish compiler warnings from linker warnings.
 5. Confirm docs describe open-loop commanded position and hardware assumptions as unverified.
 6. Review CubeMX `.ioc`/generated source and root CMake source list as one configuration change.

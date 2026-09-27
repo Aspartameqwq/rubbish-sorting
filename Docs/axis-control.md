@@ -1,91 +1,69 @@
-# Pitch/Yaw axis control foundation
+# Pitch/Yaw axis control
 
-## Scope and evidence
+## Coordinate model
 
-This round adds axis-level command and state APIs. It does not claim calibrated or measured mechanical angles. The Servo model and its safe travel are not yet confirmed, the reported mechanism has no Pitch/Yaw sensor wired to the STM32, and the TB6600 electrical path has not been measured. Current software limits are therefore disabled and must not be described as safety limits.
-
-The layers are:
+The project axes are:
 
 ```text
-PitchAxis → Servo BSP → TIM2_CH1 / PA0
-YawAxis   → Stepper  → TB6600 BSP → TIM3_CH1 / PA6, PB12, PB13
+Pitch → Servo → TIM2_CH1 / PA0
+Yaw   → Stepper + TB6600 → TIM3_CH1 / PA6, PB12, PB13
 ```
 
-Application angle commands should use `PitchAxis_SetTargetMilliDeg()` and `YawAxis_SetTargetMilliDeg()`. The legacy UART `STEPPER ...` commands remain raw bench controls and can bypass YawAxis reference/soft-limit policy.
+Pitch and Servo use different coordinates. Pitch is relative to the platform's horizontal position; Servo is the actuator's logical angle.
 
-## Units and state names
+| Coordinate | Meaning |
+|---|---|
+| Pitch `0 mdeg` | Platform horizontal |
+| Servo `130000 mdeg` | Mechanically observed near horizontal on the installed linkage |
+| Pitch `+10000 mdeg` | Platform target 10° in the configured positive direction |
 
-Control APIs use signed `int32_t` millidegrees (`mdeg`): 1° = 1000 mdeg. State keeps three distinct concepts:
+`PITCH_LEVEL_SERVO_MDEG` and `PITCH_SERVO_DIRECTION_SIGN` in [control_debug_config.h](../Config/control_debug_config.h) define the conversion:
 
-| Field | Meaning | Current availability |
-|---|---|---|
-| `target_mdeg` | Requested logical angle | Available after an axis command |
-| `commanded_mdeg` | Logical angle estimated from the command sent to the actuator | Available when the actuator mapping/reference is valid |
-| `measured_mdeg` | Sensor measurement of the real mechanical axis | Unavailable; `INT32_MIN`, `measurement_valid=0` |
-
-`commanded_mdeg` is not a physical position measurement. Servo pulse quantization can make the commanded estimate differ slightly from the requested target. Yaw command position comes from completed MCU pulse events; lost motor steps, manual shaft movement or power loss are not observable.
-
-## Pitch
-
-PitchAxis uses the Servo’s configured logical range of 0–270°. The project-selected nominal horizontal reference is **130°**, which maps to the existing center PWM pulse of **1500 µs**. The configured endpoints remain 0°→1400 µs and 270°→1600 µs; the generic BSP uses two linear segments around the center anchor, then reports the estimate inverse-mapped from the integer-microsecond pulse.
-
-This is the software coordinate convention the user selected. It does not establish the actual horn/platform orientation or safe mechanical endpoints. `SERVO_CALIBRATION_VALID` remains 0 until the actual Servo model, linkage and safe pulse range are physically checked. The raw calibration API accepts only the configured 1400–1600 µs window; it sets raw-pulse mode and invalidates target/commanded-angle telemetry.
-
-Current config:
-
-```c
-SERVO_CENTER_ANGLE_DEG = 130
-SERVO_CENTER_PULSE_US = 1500
-SERVO_CALIBRATION_VALID = 0
+```text
+servo target = pitch horizontal anchor + direction sign × Pitch target
 ```
 
-## Yaw
+The current anchor is a mechanically observed initial value, not a precision Servo/linkage calibration. Positive direction is the current software selection; verify it with a secured mechanism before relying on it.
 
-The selected TB6600 label row is 8 microsteps for the reported 1.8° motor:
+## Pitch limits and actuation path
+
+Pitch commands are signed integer millidegrees. The enforced range is always:
+
+```text
+-30000 mdeg ≤ Pitch target ≤ +30000 mdeg
+```
+
+There is no runtime or build option to disable this Pitch limit. Compile-time checks ensure both configured endpoints map within the Servo logical range. With the current anchor and positive direction, the endpoints map to Servo 100° and 160°.
+
+All application angle requests use `PitchAxis_SetTargetMilliDeg()`. Protocol, Ozone mailbox and future application callers pass through PitchAxis validation before Servo PWM changes. Raw absolute Servo angle and pulse commands are bench-only, compiled out of Release, and checked by converting the requested output back to Pitch coordinates before applying it. Raw pulse input therefore cannot bypass the same ±30° boundary.
+
+The software boundary limits commands; it is not a mechanical stop, sensor, or proof that the physical linkage can safely travel the entire configured range. Start hardware checks at 0°, then ±5°, and inspect clearance and direction before trying larger values.
+
+## Pitch time-based response
+
+Pitch target changes schedule a nonblocking linear trajectory. The main loop calls `PitchAxis_Process(now_ms)` every pass; Servo output is updated no more often than every 20 ms. The default target-to-target response time is 1000 ms, adjustable from 200 to 5000 ms. These are initial tuning values, not measured mechanical specifications.
+
+The duration is latched when each target arrives. Changing the configured response time during a move affects the next target only. A retarget starts from the latest Pitch command already sent to the Servo, so it does not jump back to an older trajectory start. The implementation uses integer arithmetic and does not delay the main loop.
+
+Ozone exposes separate fields for requested Pitch, current software command, mapped Servo angle, PWM pulse, movement state, configured/active response time and elapsed trajectory time. `measured_mdeg` remains `INT32_MIN` with `measurement_valid=0`; a smoothed command is not a sensor measurement.
+
+Pitch uses position commands plus software limits and time-based smoothing. No external Pitch PID is planned while the platform has no Pitch feedback sensor and the Servo is itself a position actuator.
+
+## Yaw and feedback boundary
+
+Yaw remains open loop. For the reported 1.8° motor and the selected TB6600 8-microstep row:
 
 ```text
 200 full steps/rev × 8 = 1600 PUL/rev
 360000 mdeg / 1600 = 225 mdeg/PUL
 ```
 
-Pulse-to-angle conversion is exact in integer arithmetic. Angle-to-pulse conversion rounds to the nearest signed integer pulse, with exact half steps rounded away from zero. Requested and quantized targets are both retained; for example `1000 mdeg` quantizes to 4 pulses, or `900 mdeg`. The actuator cannot represent every millidegree target.
+Angle requests round to the nearest signed pulse (half steps away from zero); requested and quantized targets are both retained. Absolute Yaw requests require a manually established zero and an enabled, idle Stepper. Firmware pulse counts cannot detect lost steps, shaft motion while unpowered, or hand movement.
 
-YawAxis does not treat reset-time Stepper position as mechanical zero. `YawAxis_SetCurrentPositionAsZero()` stores the current Stepper count as a separate `zero_offset_pulses`, without changing Stepper’s count. The caller must first physically align the mechanism to the chosen zero while it is safe and stationary. The reference state then becomes `YAW_REFERENCE_MANUAL`; homing and sensor reference states are reserved but not implemented.
+Pitch and Yaw measured fields remain invalid until real sensors are added. Do not copy commanded values into measured fields. Yaw PID remains out of scope until encoder, IMU or other valid yaw feedback is available; this round adds no PID, sensor, homing, limit switch, DMA acceleration or RTOS.
 
-Absolute Yaw targets require a valid reference and an enabled, idle Stepper. Frequency must remain within the configured initial 20–10,000 PUL/s range. Call `YawAxis_Enable()` before requesting angle motion. The relative logical angle is computed from `(Stepper commanded pulses - zero_offset_pulses) × 225 mdeg`.
+## Configuration and verification
 
-## Software limits
+Reviewable control settings and the public Ozone interface are centralized in [control_debug_config.h](../Config/control_debug_config.h). `project_config.h` retains transport and peripheral settings. Limits and response tuning are not written into writable Ozone tuning fields; runtime tuning is limited to Pitch response time and is range checked.
 
-`Config/project_config.h` defines the limit ranges and validity flags:
-
-```c
-PITCH_SOFT_LIMIT_VALID = 0
-PITCH_SOFT_MIN_MDEG = 0
-PITCH_SOFT_MAX_MDEG = 270000
-
-YAW_SOFT_LIMIT_VALID = 0
-YAW_SOFT_MIN_MDEG = -180000
-YAW_SOFT_MAX_MDEG = 180000
-```
-
-These are placeholders only. With a validity flag set to 0, the debug snapshot reports the limit as disabled and the range is not treated as calibrated protection. After actual mechanism measurement and review, setting a flag to 1 enables rejection: Pitch rejects requested logical targets outside its range; Yaw rejects requested or quantized pulse targets outside its range. Rejections are counted. Commands are never clamped. Yaw still requires a valid reference before an absolute limit can be evaluated.
-
-The counters and most recent status are exposed in `g_debug_state`; status and count update on axis command attempts. Raw `SERVO_US` and `STEPPER MOVE` are bench interfaces and must not be used as production commands after limits are enabled.
-
-## Feedback and PID roadmap
-
-No external PID is implemented or connected to an actuator. A command estimate must never be copied into `measured_mdeg` to simulate feedback. The Servo model itself is not confirmed, and no sensor output is currently connected to this firmware.
-
-Future work should proceed in this order:
-
-1. Add a real Pitch/Yaw sensor interface and validate units, orientation, range, update rate and faults.
-2. Populate `measured_mdeg` only from that sensor and set `measurement_valid` only for valid samples.
-3. Add a hardware-independent, integer or appropriately reviewed PID math module with host coverage.
-4. Connect PID output to PitchAxis/YawAxis only after feedback validity, output bounds, saturation and stop behavior are defined.
-5. Tune gains with the mechanism secured; add integrator limits/anti-windup and document measured results.
-
-Pitch PID would mean platform target minus a sensor-measured platform Pitch, with its output setting a Servo target. It must not compare a Servo command against itself. Yaw PID likewise needs IMU, encoder or another real yaw measurement; Stepper pulse count is not feedback.
-
-## Host verification
-
-Host tests cover angle conversion, signed rounding, manual zero offset, requested/quantized targets, Servo mapping and raw-mode invalidation. Separate host configurations compile with software limits disabled/enabled and with Debug command injection enabled/disabled. These are software checks; hardware calibration and motor/Servo behavior remain pending.
+Host tests cover horizontal zero, fixed limit endpoints and rejects, raw-angle/raw-pulse limit enforcement, protocol and Ozone entry paths, 20 ms update cadence, linear midpoint, retarget continuity, response-time range/latching, Release gates and snapshot consistency. These checks establish software behavior only. Servo direction/travel, pulse calibration and physical safety remain pending bench verification.

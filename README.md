@@ -5,11 +5,12 @@ STM32F103C8T6 下位机工程，使用 STM32CubeMX 6.12.0、STM32CubeF1 HAL v1.8
 ## 当前状态
 
 - CubeMX 已生成并核对：72 MHz 系统时钟、SWD、TIM2_CH1/PA0、USART1/PA9/PA10、DMA1_CH5 Circular RX、TIM3_CH1/PA6、PB12 DIR、PB13 ENA 和 TIM3 IRQ。
-- Pitch 轴由 Servo 控制，项目逻辑水平中位选择为 130° / 1500 µs；该坐标锚点尚未经过实际舵机和机构校准。
+- Pitch 轴以平台水平为 0°；已安装机构在 Servo 约 130° 时观察为水平，当前锚点映射到 1500 µs，属于机械观察的初始值，尚非精密标定。
+- Pitch 目标硬限制为相对水平 ±30°，不能通过构建选项或 Ozone 运行期关闭。目标变更使用默认 1000 ms、可调 200–5000 ms 的非阻塞线性响应。
 - Yaw 轴由 Stepper/TB6600 控制；选定 1600 PUL/rev，即 225 mdeg/PUL。绝对 Yaw 命令需要操作员设置手动零点；Stepper 计数仍是开环估计。
 - Pitch/Yaw target、commanded estimate、measured angle 已分离。当前无角度传感器，两个 measured 字段均无效。
-- 软件限位框架已实现，但有效标志默认关闭，范围仍是未校准占位值；不能视作安全保护。
-- Ozone 全局遥测符号与调试命令邮箱已实现；命令注入只在 Debug 构建启用，Release 不执行邮箱命令。
+- Yaw 软件限位仍默认关闭，范围未经过机构标定；Pitch 软件范围是命令保护，不是机械限位或实体验证。
+- Ozone 使用单一全局对象 `g_control_debug` 暴露遥测、运行期 Pitch 响应时间调节和单请求邮箱；Debug 才启用调试/bench 命令，Release 会拒绝。
 - HC-04、命令解析、TB6600 BSP、有限步数 Stepper、整数 profile foundation 和 App health 状态已实现。
 - host 软件测试、ARM Debug/Release 构建和硬件验证状态以当前分支 CI/开发记录为准；未接实物时不得声称硬件通过。
 - TB6600 项目已选择 STM32 3.3 V GPIO 共阴直连，8 细分（1600 PUL/rev）及 1.5 A 面板电流档；输入电流、波形、ENA/DIR 行为和电机运动仍待实测。完整接线见 [Docs/wiring.md](Docs/wiring.md)。
@@ -20,7 +21,8 @@ STM32F103C8T6 下位机工程，使用 STM32CubeMX 6.12.0、STM32CubeF1 HAL v1.8
 
 ```text
 Core/                    CubeMX 生成的 HAL 工程
-Config/                  项目级集中配置
+Config/                  外设配置及 Pitch/Yaw/Ozone 统一 review 配置
+Platform/                系统毫秒时钟适配层
 App/                     初始化、health 状态和主循环调度
 BSP/                     Servo、HC-04、TB6600 和定时换算
 Motion/                  Stepper 控制器及 HAL-free profile 数学
@@ -70,4 +72,4 @@ CubeMX 会生成 `Core/*`、`.ioc` 和 `cmake/stm32cubemx/*`。仓库 root CMake
 
 ## Contributing
 
-改动请基于当前集成分支开短期功能分支，通过 Pull Request review。提交外设改动时一并更新 `.ioc` / 生成代码、root CMake 源文件列表、host 测试和对应硬件文档；未做实机验证的行为请明确标注 `PENDING`。Ozone 应使用 Debug ELF 与 `g_debug_state` / `g_debug_command`，不要直接修改 telemetry 或硬件寄存器。本仓库当前未声明开源许可证；如需在仓库外复用代码，请先确认许可证安排。
+改动请基于当前集成分支开短期功能分支，通过 Pull Request review。提交外设改动时一并更新 `.ioc` / 生成代码、root CMake 源文件列表、host 测试和对应硬件文档；未做实机验证的行为请明确标注 `PENDING`。Ozone 应使用 Debug ELF 与 `g_control_debug`，不要直接修改 telemetry 或硬件寄存器。本仓库当前未声明开源许可证；如需在仓库外复用代码，请先确认许可证安排。

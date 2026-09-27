@@ -1,12 +1,14 @@
 #include "protocol.h"
 
 #include "hc04.h"
+#include "control_debug_config.h"
 #include "pitch_axis.h"
 #include "project_config.h"
 #include "servo.h"
 #include "stepper.h"
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -36,6 +38,7 @@ static void Protocol_SendOk(void)
     Protocol_Send(response, (uint16_t)(sizeof(response) - 1U));
 }
 
+#if (RAW_BENCH_COMMANDS_ENABLE == 1)
 static bool Protocol_ParseDecimal(uint16_t prefix_length, uint16_t *value)
 {
     uint16_t index = prefix_length;
@@ -84,6 +87,7 @@ static bool Protocol_ParseDecimal(uint16_t prefix_length, uint16_t *value)
     *value = (uint16_t)parsed_value;
     return true;
 }
+#endif
 
 static uint16_t Protocol_AppendDecimal(uint16_t value, uint8_t *output)
 {
@@ -147,6 +151,7 @@ static uint16_t Protocol_AppendSigned32(int32_t value, uint8_t *output)
     return (uint16_t)(length + Protocol_AppendUnsigned32(magnitude, &output[length]));
 }
 
+#if (RAW_BENCH_COMMANDS_ENABLE == 1)
 static bool Protocol_ParseSigned32AndUnsigned32(uint16_t prefix_length,
                                                 int32_t *signed_value,
                                                 uint32_t *unsigned_value)
@@ -253,6 +258,81 @@ static bool Protocol_ParseSigned32AndUnsigned32(uint16_t prefix_length,
     *unsigned_value = parsed_unsigned;
     return true;
 }
+#endif
+
+static bool Protocol_ParseSignedDecimal32(uint16_t prefix_length, int32_t *value)
+{
+    uint16_t index = prefix_length;
+    uint32_t magnitude = 0U;
+    uint32_t magnitude_limit;
+    bool negative = false;
+    bool has_digit = false;
+
+    if (value == NULL)
+    {
+        return false;
+    }
+    while ((index < s_command_length) && (s_command_line[index] == (uint8_t)' '))
+    {
+        index++;
+    }
+    if (index < s_command_length)
+    {
+        if (s_command_line[index] == (uint8_t)'-')
+        {
+            negative = true;
+            index++;
+        }
+        else if (s_command_line[index] == (uint8_t)'+')
+        {
+            index++;
+        }
+    }
+
+    magnitude_limit = negative ? ((uint32_t)INT32_MAX + 1U) : (uint32_t)INT32_MAX;
+    while (index < s_command_length)
+    {
+        const uint8_t character = s_command_line[index];
+        uint32_t digit;
+
+        if ((character < (uint8_t)'0') || (character > (uint8_t)'9'))
+        {
+            break;
+        }
+        digit = (uint32_t)(character - (uint8_t)'0');
+        if (magnitude > ((magnitude_limit - digit) / 10U))
+        {
+            return false;
+        }
+        magnitude = (magnitude * 10U) + digit;
+        has_digit = true;
+        index++;
+    }
+    if (!has_digit)
+    {
+        return false;
+    }
+    while ((index < s_command_length) && (s_command_line[index] == (uint8_t)' '))
+    {
+        index++;
+    }
+    if (index != s_command_length)
+    {
+        return false;
+    }
+
+    if (negative)
+    {
+        *value = (magnitude == ((uint32_t)INT32_MAX + 1U))
+                     ? INT32_MIN
+                     : -(int32_t)magnitude;
+    }
+    else
+    {
+        *value = (int32_t)magnitude;
+    }
+    return true;
+}
 
 static void Protocol_SendStepperStatus(void)
 {
@@ -334,6 +414,7 @@ static void Protocol_SendServoRawPulse(void)
 static bool Protocol_ExecuteCommand(void)
 {
     static const uint8_t ping_command[] = "PING";
+    static const uint8_t pitch_prefix[] = "PITCH ";
     static const uint8_t servo_query[] = "SERVO?";
     static const uint8_t servo_prefix[] = "SERVO ";
     static const uint8_t servo_us_prefix[] = "SERVO_US ";
@@ -342,7 +423,10 @@ static bool Protocol_ExecuteCommand(void)
     static const uint8_t stepper_move_prefix[] = "STEPPER MOVE ";
     static const uint8_t stepper_stop[] = "STEPPER STOP";
     static const uint8_t stepper_query[] = "STEPPER?";
+    int32_t pitch_target_mdeg;
+#if (RAW_BENCH_COMMANDS_ENABLE == 1)
     uint16_t value;
+#endif
 
     if ((s_command_length == (sizeof(ping_command) - 1U)) &&
         (memcmp(s_command_line, ping_command, sizeof(ping_command) - 1U) == 0))
@@ -352,9 +436,26 @@ static bool Protocol_ExecuteCommand(void)
         return true;
     }
 
+    if ((s_command_length > (sizeof(pitch_prefix) - 1U)) &&
+        (memcmp(s_command_line, pitch_prefix, sizeof(pitch_prefix) - 1U) == 0))
+    {
+        if (Protocol_ParseSignedDecimal32((uint16_t)(sizeof(pitch_prefix) - 1U),
+                                          &pitch_target_mdeg) &&
+            (PitchAxis_SetTargetMilliDeg(pitch_target_mdeg) == PITCH_AXIS_STATUS_OK))
+        {
+            Protocol_SendOk();
+        }
+        else
+        {
+            Protocol_SendError();
+        }
+        return true;
+    }
+
     if ((s_command_length == (sizeof(stepper_enable) - 1U)) &&
         (memcmp(s_command_line, stepper_enable, sizeof(stepper_enable) - 1U) == 0))
     {
+#if (RAW_BENCH_COMMANDS_ENABLE == 1)
         if (Stepper_Enable() == STEPPER_STATUS_OK)
         {
             Protocol_SendOk();
@@ -363,6 +464,9 @@ static bool Protocol_ExecuteCommand(void)
         {
             Protocol_SendError();
         }
+#else
+        Protocol_SendError();
+#endif
         return true;
     }
 
@@ -406,6 +510,7 @@ static bool Protocol_ExecuteCommand(void)
                 stepper_move_prefix,
                 sizeof(stepper_move_prefix) - 1U) == 0))
     {
+#if (RAW_BENCH_COMMANDS_ENABLE == 1)
         int32_t steps;
         uint32_t frequency_hz;
 
@@ -420,6 +525,9 @@ static bool Protocol_ExecuteCommand(void)
         {
             Protocol_SendError();
         }
+#else
+        Protocol_SendError();
+#endif
         return true;
     }
 
@@ -444,25 +552,40 @@ static bool Protocol_ExecuteCommand(void)
     if ((s_command_length > (sizeof(servo_prefix) - 1U)) &&
         (memcmp(s_command_line, servo_prefix, sizeof(servo_prefix) - 1U) == 0))
     {
+#if (RAW_BENCH_COMMANDS_ENABLE == 1)
         if (Protocol_ParseDecimal((uint16_t)(sizeof(servo_prefix) - 1U), &value) &&
-            (PitchAxis_SetTargetMilliDeg((int32_t)value * 1000) == PITCH_AXIS_STATUS_OK))
+            (value <= SERVO_MAX_ANGLE_DEG) &&
+            (PitchAxis_SetRawServoAngleMilliDeg((int32_t)value * 1000) == PITCH_AXIS_STATUS_OK))
         {
             Protocol_SendOk();
-            return true;
         }
-        return false;
+        else
+        {
+            Protocol_SendError();
+        }
+#else
+        Protocol_SendError();
+#endif
+        return true;
     }
 
     if ((s_command_length > (sizeof(servo_us_prefix) - 1U)) &&
         (memcmp(s_command_line, servo_us_prefix, sizeof(servo_us_prefix) - 1U) == 0))
     {
+#if (RAW_BENCH_COMMANDS_ENABLE == 1)
         if (Protocol_ParseDecimal((uint16_t)(sizeof(servo_us_prefix) - 1U), &value) &&
             (PitchAxis_SetRawPulseUs(value) == PITCH_AXIS_STATUS_OK))
         {
             Protocol_SendOk();
-            return true;
         }
-        return false;
+        else
+        {
+            Protocol_SendError();
+        }
+#else
+        Protocol_SendError();
+#endif
+        return true;
     }
 
     return false;

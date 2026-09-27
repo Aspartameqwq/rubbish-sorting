@@ -5,16 +5,15 @@
 
 #include <limits.h>
 #include <stdbool.h>
+#include <stddef.h>
 
-#if (DEBUG_CONTROL_ENABLE != 0) && (DEBUG_CONTROL_ENABLE != 1)
-#error "DEBUG_CONTROL_ENABLE must be 0 or 1"
-#endif
-
-volatile DebugState g_debug_state;
-volatile DebugCommand g_debug_command;
+volatile ControlDebugBlock g_control_debug;
 
 static uint32_t s_heartbeat;
 static uint32_t s_last_snapshot_ms;
+static uint32_t s_last_debug_command;
+static int32_t s_last_debug_result;
+static uint32_t s_tuning_reject_count;
 static bool s_snapshot_started;
 
 #if (DEBUG_CONTROL_ENABLE == 1)
@@ -30,6 +29,8 @@ static int32_t Debug_MapPitchStatus(PitchAxisStatus status)
             return DEBUG_RESULT_NOT_INITIALIZED;
         case PITCH_AXIS_STATUS_LIMIT:
             return DEBUG_RESULT_LIMIT;
+        case PITCH_AXIS_STATUS_DISABLED:
+            return DEBUG_RESULT_DISABLED;
         case PITCH_AXIS_STATUS_DRIVER_ERROR:
         default:
             return DEBUG_RESULT_DRIVER_ERROR;
@@ -64,7 +65,8 @@ static int32_t Debug_ExecuteCommand(uint32_t command,
                                     int32_t pitch_target_mdeg,
                                     int32_t yaw_target_mdeg,
                                     uint32_t yaw_frequency_hz,
-                                    uint32_t pitch_pulse_us)
+                                    uint32_t pitch_pulse_us,
+                                    uint32_t pitch_response_time_ms)
 {
     switch (command)
     {
@@ -121,12 +123,46 @@ static int32_t Debug_ExecuteCommand(uint32_t command,
         case DEBUG_CMD_YAW_STOP:
             return Debug_MapYawStatus(YawAxis_Stop());
 
+        case DEBUG_CMD_SET_PITCH_RESPONSE_MS:
+        {
+            PitchAxisStatus status = PitchAxis_SetResponseTimeMs(pitch_response_time_ms);
+            if (status == PITCH_AXIS_STATUS_OK)
+            {
+                g_control_debug.tuning.pitch_response_time_ms = pitch_response_time_ms;
+            }
+            return Debug_MapPitchStatus(status);
+        }
+
         case DEBUG_CMD_NONE:
         default:
             return DEBUG_RESULT_UNKNOWN_COMMAND;
     }
 }
 #endif
+
+static void Debug_ApplyTuning(void)
+{
+#if (DEBUG_CONTROL_ENABLE == 1)
+    const uint32_t requested_ms = g_control_debug.tuning.pitch_response_time_ms;
+    const uint32_t active_setting_ms = PitchAxis_GetResponseTimeMs();
+
+    if (requested_ms != active_setting_ms)
+    {
+        if (PitchAxis_SetResponseTimeMs(requested_ms) == PITCH_AXIS_STATUS_OK)
+        {
+            return;
+        }
+
+        g_control_debug.tuning.pitch_response_time_ms = active_setting_ms;
+        if (s_tuning_reject_count < UINT32_MAX)
+        {
+            s_tuning_reject_count++;
+        }
+    }
+#else
+    g_control_debug.tuning.pitch_response_time_ms = PitchAxis_GetResponseTimeMs();
+#endif
+}
 
 static DebugState Debug_CaptureSnapshot(uint32_t now_ms, uint32_t app_health_flags)
 {
@@ -136,20 +172,26 @@ static DebugState Debug_CaptureSnapshot(uint32_t now_ms, uint32_t app_health_fla
     snapshot.heartbeat = ++s_heartbeat;
     snapshot.tick_ms = now_ms;
     snapshot.app_health_flags = app_health_flags;
+    snapshot.last_debug_command = s_last_debug_command;
+    snapshot.last_debug_result = s_last_debug_result;
 
     snapshot.pitch.target_mdeg = PitchAxis_GetTargetMilliDeg();
     snapshot.pitch.commanded_mdeg = PitchAxis_GetCommandedMilliDeg();
+    snapshot.pitch.servo_target_mdeg = PitchAxis_GetServoTargetMilliDeg();
+    snapshot.pitch.servo_pulse_us = PitchAxis_GetPulseUs();
     snapshot.pitch.measured_mdeg = PitchAxis_GetMeasuredMilliDeg();
     snapshot.pitch.measurement_valid = PitchAxis_IsMeasurementValid() ? 1U : 0U;
-    snapshot.pitch.pulse_us = PitchAxis_GetPulseUs();
+    snapshot.pitch.moving = PitchAxis_IsMoving() ? 1U : 0U;
+    snapshot.pitch.response_time_ms = PitchAxis_GetResponseTimeMs();
+    snapshot.pitch.active_response_time_ms = PitchAxis_GetActiveResponseTimeMs();
+    snapshot.pitch.trajectory_elapsed_ms = PitchAxis_GetTrajectoryElapsedMs();
+    snapshot.pitch.soft_limit_min_mdeg = PitchAxis_GetSoftLimitMinMilliDeg();
+    snapshot.pitch.soft_limit_max_mdeg = PitchAxis_GetSoftLimitMaxMilliDeg();
+    snapshot.pitch.limit_reject_count = PitchAxis_GetLimitRejectCount();
+    snapshot.pitch.tuning_reject_count = s_tuning_reject_count;
     snapshot.pitch.servo_enabled = PitchAxis_IsServoEnabled() ? 1U : 0U;
     snapshot.pitch.calibration_valid = PitchAxis_IsCalibrationValid() ? 1U : 0U;
     snapshot.pitch.raw_pulse_mode = PitchAxis_IsRawPulseMode() ? 1U : 0U;
-    snapshot.pitch.soft_limit_min_mdeg = PitchAxis_GetSoftLimitMinMilliDeg();
-    snapshot.pitch.soft_limit_max_mdeg = PitchAxis_GetSoftLimitMaxMilliDeg();
-    snapshot.pitch.soft_limit_enabled = PitchAxis_IsSoftLimitEnabled() ? 1U : 0U;
-    snapshot.pitch.limit_reject_count = PitchAxis_GetLimitRejectCount();
-    snapshot.pitch.control_error_mdeg = DEBUG_ANGLE_INVALID_MDEG;
     snapshot.pitch.status = (int32_t)PitchAxis_GetLastStatus();
 
     snapshot.yaw.target_mdeg = YawAxis_GetTargetMilliDeg();
@@ -168,62 +210,99 @@ static DebugState Debug_CaptureSnapshot(uint32_t now_ms, uint32_t app_health_fla
     snapshot.yaw.soft_limit_max_mdeg = YawAxis_GetSoftLimitMaxMilliDeg();
     snapshot.yaw.soft_limit_enabled = YawAxis_IsSoftLimitEnabled() ? 1U : 0U;
     snapshot.yaw.limit_reject_count = YawAxis_GetLimitRejectCount();
-    snapshot.yaw.control_error_mdeg = DEBUG_ANGLE_INVALID_MDEG;
     snapshot.yaw.status = (int32_t)YawAxis_GetLastStatus();
 
     return snapshot;
 }
 
+static void Debug_StoreSnapshot(const DebugState *snapshot)
+{
+    volatile unsigned char *destination = (volatile unsigned char *)&g_control_debug.state;
+    const unsigned char *source = (const unsigned char *)snapshot;
+    uint32_t sequence = g_control_debug.state.snapshot_seq;
+    size_t index;
+
+    if ((sequence & 1U) != 0U)
+    {
+        sequence++;
+    }
+    g_control_debug.state.snapshot_seq = sequence + 1U;
+
+    for (index = sizeof(snapshot->snapshot_seq); index < sizeof(*snapshot); index++)
+    {
+        destination[index] = source[index];
+    }
+
+    g_control_debug.state.snapshot_seq = sequence + 2U;
+}
+
 void Debug_Init(void)
 {
-    const DebugState empty_state = {0};
-    const DebugCommand empty_command = {0};
+    const ControlDebugBlock empty_block = {0};
 
-    g_debug_state = empty_state;
-    g_debug_command = empty_command;
-    g_debug_state.version = DEBUG_STATE_VERSION;
-    g_debug_state.pitch.measured_mdeg = DEBUG_ANGLE_INVALID_MDEG;
-    g_debug_state.pitch.control_error_mdeg = DEBUG_ANGLE_INVALID_MDEG;
-    g_debug_state.yaw.target_mdeg = DEBUG_ANGLE_INVALID_MDEG;
-    g_debug_state.yaw.quantized_target_mdeg = DEBUG_ANGLE_INVALID_MDEG;
-    g_debug_state.yaw.commanded_mdeg = DEBUG_ANGLE_INVALID_MDEG;
-    g_debug_state.yaw.measured_mdeg = DEBUG_ANGLE_INVALID_MDEG;
-    g_debug_state.yaw.control_error_mdeg = DEBUG_ANGLE_INVALID_MDEG;
-    g_debug_command.result = DEBUG_RESULT_OK;
+    g_control_debug = empty_block;
+    g_control_debug.state.version = DEBUG_STATE_VERSION;
+    g_control_debug.state.pitch.target_mdeg = DEBUG_ANGLE_INVALID_MDEG;
+    g_control_debug.state.pitch.commanded_mdeg = DEBUG_ANGLE_INVALID_MDEG;
+    g_control_debug.state.pitch.servo_target_mdeg = DEBUG_ANGLE_INVALID_MDEG;
+    g_control_debug.state.pitch.measured_mdeg = DEBUG_ANGLE_INVALID_MDEG;
+    g_control_debug.state.yaw.target_mdeg = DEBUG_ANGLE_INVALID_MDEG;
+    g_control_debug.state.yaw.quantized_target_mdeg = DEBUG_ANGLE_INVALID_MDEG;
+    g_control_debug.state.yaw.commanded_mdeg = DEBUG_ANGLE_INVALID_MDEG;
+    g_control_debug.state.yaw.measured_mdeg = DEBUG_ANGLE_INVALID_MDEG;
+    g_control_debug.state.last_debug_result = DEBUG_RESULT_OK;
+    g_control_debug.command.result = DEBUG_RESULT_OK;
+    g_control_debug.tuning.pitch_response_time_ms = PITCH_RESPONSE_TIME_DEFAULT_MS;
+
     s_heartbeat = 0U;
     s_last_snapshot_ms = 0U;
+    s_last_debug_command = DEBUG_CMD_NONE;
+    s_last_debug_result = DEBUG_RESULT_OK;
+    s_tuning_reject_count = 0U;
     s_snapshot_started = false;
 }
 
 void Debug_Process(uint32_t now_ms, uint32_t app_health_flags)
 {
-    const uint32_t request_seq = g_debug_command.request_seq;
-    const uint32_t applied_seq = g_debug_command.applied_seq;
+    const uint32_t request_seq = g_control_debug.command.request_seq;
+    const uint32_t applied_seq = g_control_debug.command.applied_seq;
+
+    Debug_ApplyTuning();
 
     if (request_seq != applied_seq)
     {
+        const uint32_t command = g_control_debug.command.command;
+        int32_t result;
+
 #if (DEBUG_CONTROL_ENABLE == 1)
-        const uint32_t command = g_debug_command.command;
-        const int32_t pitch_target_mdeg = g_debug_command.pitch_target_mdeg;
-        const int32_t yaw_target_mdeg = g_debug_command.yaw_target_mdeg;
-        const uint32_t yaw_frequency_hz = g_debug_command.yaw_frequency_hz;
-        const uint32_t pitch_pulse_us = g_debug_command.pitch_pulse_us;
-        g_debug_command.result = Debug_ExecuteCommand(command,
-                                                       pitch_target_mdeg,
-                                                       yaw_target_mdeg,
-                                                       yaw_frequency_hz,
-                                                       pitch_pulse_us);
+        const int32_t pitch_target_mdeg = g_control_debug.command.pitch_target_mdeg;
+        const int32_t yaw_target_mdeg = g_control_debug.command.yaw_target_mdeg;
+        const uint32_t yaw_frequency_hz = g_control_debug.command.yaw_frequency_hz;
+        const uint32_t pitch_pulse_us = g_control_debug.command.pitch_pulse_us;
+        const uint32_t pitch_response_time_ms = g_control_debug.command.pitch_response_time_ms;
+
+        result = Debug_ExecuteCommand(command,
+                                      pitch_target_mdeg,
+                                      yaw_target_mdeg,
+                                      yaw_frequency_hz,
+                                      pitch_pulse_us,
+                                      pitch_response_time_ms);
 #else
-        g_debug_command.result = DEBUG_RESULT_DISABLED;
+        result = DEBUG_RESULT_DISABLED;
 #endif
-        g_debug_command.applied_seq = request_seq;
+
+        g_control_debug.command.result = result;
+        s_last_debug_command = command;
+        s_last_debug_result = result;
+        g_control_debug.command.command = DEBUG_CMD_NONE;
+        g_control_debug.command.applied_seq = request_seq;
     }
 
     if (!s_snapshot_started ||
         ((uint32_t)(now_ms - s_last_snapshot_ms) >= DEBUG_SNAPSHOT_PERIOD_MS))
     {
         const DebugState snapshot = Debug_CaptureSnapshot(now_ms, app_health_flags);
-        g_debug_state = snapshot;
+        Debug_StoreSnapshot(&snapshot);
         s_last_snapshot_ms = now_ms;
         s_snapshot_started = true;
     }

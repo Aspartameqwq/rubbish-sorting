@@ -14,9 +14,12 @@ typedef enum
 } ServoStatus;
 
 ServoStatus Servo_Init(void);
+/* Low-level BSP actuator calls; application control routes through PitchAxis. */
 ServoStatus Servo_SetAngle(uint16_t angle_deg);
 ServoStatus Servo_SetAngleMilliDeg(int32_t angle_mdeg);
 ServoStatus Servo_SetPulseUs(uint16_t pulse_us);
+ServoStatus Servo_ConvertAngleMilliDegToPulseUs(int32_t angle_mdeg, uint16_t *pulse_us);
+ServoStatus Servo_ConvertPulseUsToAngleMilliDeg(uint16_t pulse_us, int32_t *angle_mdeg);
 /* Meaningful only while Servo_IsAngleValid() is true. */
 uint16_t Servo_GetAngle(void);
 /* Requested logical angle and PWM-quantized logical command estimate. */

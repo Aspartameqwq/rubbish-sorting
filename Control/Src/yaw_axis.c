@@ -1,5 +1,6 @@
 #include "yaw_axis.h"
 
+#include "control_debug_config.h"
 #include "project_config.h"
 #include "stepper.h"
 

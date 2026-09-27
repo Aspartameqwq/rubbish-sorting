@@ -1,9 +1,10 @@
 #include "servo.h"
 
-#include "project_config.h"
+#include "control_debug_config.h"
 #include "tim.h"
 
 #include <limits.h>
+#include <stddef.h>
 
 #if (SERVO_CENTER_ANGLE_DEG <= SERVO_MIN_ANGLE_DEG) || \
     (SERVO_CENTER_ANGLE_DEG >= SERVO_MAX_ANGLE_DEG)
@@ -90,6 +91,30 @@ static int32_t Servo_PulseToAngle(uint16_t pulse_us)
     return (int32_t)angle_mdeg;
 }
 
+ServoStatus Servo_ConvertAngleMilliDegToPulseUs(int32_t angle_mdeg, uint16_t *pulse_us)
+{
+    if ((pulse_us == NULL) || (angle_mdeg < SERVO_MIN_ANGLE_MDEG) ||
+        (angle_mdeg > SERVO_MAX_ANGLE_MDEG))
+    {
+        return SERVO_STATUS_INVALID_ARGUMENT;
+    }
+
+    *pulse_us = Servo_AngleToPulse(angle_mdeg);
+    return SERVO_STATUS_OK;
+}
+
+ServoStatus Servo_ConvertPulseUsToAngleMilliDeg(uint16_t pulse_us, int32_t *angle_mdeg)
+{
+    if ((angle_mdeg == NULL) || (pulse_us < SERVO_MIN_PULSE_US) ||
+        (pulse_us > SERVO_MAX_PULSE_US))
+    {
+        return SERVO_STATUS_INVALID_ARGUMENT;
+    }
+
+    *angle_mdeg = Servo_PulseToAngle(pulse_us);
+    return (*angle_mdeg == INT32_MIN) ? SERVO_STATUS_INVALID_ARGUMENT : SERVO_STATUS_OK;
+}
+
 ServoStatus Servo_Init(void)
 {
     if (s_initialized)
@@ -111,8 +136,8 @@ ServoStatus Servo_Init(void)
         return SERVO_STATUS_HAL_ERROR;
     }
 
-    s_target_angle_mdeg = (int32_t)SERVO_CENTER_ANGLE_DEG * 1000;
-    s_commanded_angle_mdeg = (int32_t)SERVO_CENTER_ANGLE_DEG * 1000;
+    s_target_angle_mdeg = SERVO_CENTER_ANGLE_MDEG;
+    s_commanded_angle_mdeg = SERVO_CENTER_ANGLE_MDEG;
     s_pulse_us = SERVO_CENTER_PULSE_US;
     s_angle_valid = true;
     s_enabled = true;
@@ -128,18 +153,17 @@ ServoStatus Servo_SetAngle(uint16_t angle_deg)
 ServoStatus Servo_SetAngleMilliDeg(int32_t angle_mdeg)
 {
     uint16_t pulse_us;
+    ServoStatus conversion_status;
 
     if (!s_initialized)
     {
         return SERVO_STATUS_NOT_INITIALIZED;
     }
-    if ((angle_mdeg < ((int32_t)SERVO_MIN_ANGLE_DEG * 1000)) ||
-        (angle_mdeg > ((int32_t)SERVO_MAX_ANGLE_DEG * 1000)))
+    conversion_status = Servo_ConvertAngleMilliDegToPulseUs(angle_mdeg, &pulse_us);
+    if (conversion_status != SERVO_STATUS_OK)
     {
-        return SERVO_STATUS_INVALID_ARGUMENT;
+        return conversion_status;
     }
-
-    pulse_us = Servo_AngleToPulse(angle_mdeg);
 
     __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, pulse_us);
     s_target_angle_mdeg = angle_mdeg;
@@ -151,12 +175,14 @@ ServoStatus Servo_SetAngleMilliDeg(int32_t angle_mdeg)
 
 ServoStatus Servo_SetPulseUs(uint16_t pulse_us)
 {
+    int32_t angle_mdeg;
+
     if (!s_initialized)
     {
         return SERVO_STATUS_NOT_INITIALIZED;
     }
-    if ((pulse_us < SERVO_MIN_PULSE_US) || (pulse_us > SERVO_MAX_PULSE_US) ||
-        (pulse_us >= (htim2.Init.Period + 1U)))
+    if ((pulse_us >= (htim2.Init.Period + 1U)) ||
+        (Servo_ConvertPulseUsToAngleMilliDeg(pulse_us, &angle_mdeg) != SERVO_STATUS_OK))
     {
         return SERVO_STATUS_INVALID_ARGUMENT;
     }

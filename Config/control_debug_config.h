@@ -1,0 +1,233 @@
+#ifndef CONTROL_DEBUG_CONFIG_H
+#define CONTROL_DEBUG_CONFIG_H
+
+#include <stdint.h>
+
+/* =============================
+ * Servo calibration and Pitch reference
+ * ============================= */
+
+#define SERVO_MIN_ANGLE_DEG                 0L
+#define SERVO_MAX_ANGLE_DEG                 270L
+#define SERVO_CENTER_ANGLE_DEG              (PITCH_LEVEL_SERVO_MDEG / 1000L)
+#define SERVO_MIN_ANGLE_MDEG                (SERVO_MIN_ANGLE_DEG * 1000L)
+#define SERVO_MAX_ANGLE_MDEG                (SERVO_MAX_ANGLE_DEG * 1000L)
+#define SERVO_CENTER_ANGLE_MDEG             PITCH_LEVEL_SERVO_MDEG
+
+/* INITIAL pulse window; verify the actual servo and linkage before increasing it. */
+#define SERVO_MIN_PULSE_US                  1400U
+#define SERVO_CENTER_PULSE_US               1500U
+#define SERVO_MAX_PULSE_US                  1600U
+#ifndef SERVO_CALIBRATION_VALID
+#define SERVO_CALIBRATION_VALID             0U
+#endif
+
+/* The installed platform is mechanically horizontal near servo 130 degrees. */
+#define PITCH_LEVEL_SERVO_MDEG              130000L
+#define PITCH_SERVO_DIRECTION_SIGN          (+1)
+
+/* Hard logical Pitch limits; there is intentionally no disable switch. */
+#define PITCH_SOFT_MIN_MDEG                 (-30000L)
+#define PITCH_SOFT_MAX_MDEG                 30000L
+
+/* =============================
+ * Pitch trajectory
+ * ============================= */
+
+#define PITCH_RESPONSE_TIME_DEFAULT_MS      1000U
+#define PITCH_RESPONSE_TIME_MIN_MS          200U
+#define PITCH_RESPONSE_TIME_MAX_MS          5000U
+#define PITCH_UPDATE_PERIOD_MS              20U
+
+/* =============================
+ * Yaw
+ * ============================= */
+
+#define YAW_PULSES_PER_REV                  1600U
+#define ANGLE_MDEG_PER_REV                  360000L
+
+/* Placeholder only; physical yaw travel is not calibrated. */
+#ifndef YAW_SOFT_LIMIT_VALID
+#define YAW_SOFT_LIMIT_VALID                0U
+#endif
+#ifndef YAW_SOFT_MIN_MDEG
+#define YAW_SOFT_MIN_MDEG                   (-180000L)
+#endif
+#ifndef YAW_SOFT_MAX_MDEG
+#define YAW_SOFT_MAX_MDEG                   180000L
+#endif
+
+/* =============================
+ * Debug and Ozone policy
+ * ============================= */
+
+#define DEBUG_SNAPSHOT_PERIOD_MS            20U
+#define DEBUG_STATE_VERSION                 2U
+
+#ifndef DEBUG_CONTROL_ENABLE
+#if defined(DEBUG)
+#define DEBUG_CONTROL_ENABLE                1
+#else
+#define DEBUG_CONTROL_ENABLE                0
+#endif
+#endif
+
+#ifndef RAW_BENCH_COMMANDS_ENABLE
+#if defined(DEBUG)
+#define RAW_BENCH_COMMANDS_ENABLE           1
+#else
+#define RAW_BENCH_COMMANDS_ENABLE           0
+#endif
+#endif
+
+#define DEBUG_ANGLE_INVALID_MDEG            INT32_MIN
+
+typedef enum
+{
+    DEBUG_CMD_NONE = 0,
+    DEBUG_CMD_SET_PITCH_MDEG,
+    DEBUG_CMD_SET_PITCH_PULSE_US,
+    DEBUG_CMD_SET_YAW_MDEG,
+    DEBUG_CMD_SET_BOTH_MDEG,
+    DEBUG_CMD_SET_YAW_ZERO,
+    DEBUG_CMD_YAW_ENABLE,
+    DEBUG_CMD_YAW_DISABLE,
+    DEBUG_CMD_YAW_STOP,
+    DEBUG_CMD_SET_PITCH_RESPONSE_MS
+} DebugCommandType;
+
+typedef enum
+{
+    DEBUG_RESULT_OK = 0,
+    DEBUG_RESULT_DISABLED = -1,
+    DEBUG_RESULT_UNKNOWN_COMMAND = -2,
+    DEBUG_RESULT_INVALID_ARGUMENT = -3,
+    DEBUG_RESULT_NOT_INITIALIZED = -4,
+    DEBUG_RESULT_NOT_REFERENCED = -5,
+    DEBUG_RESULT_LIMIT = -6,
+    DEBUG_RESULT_BUSY = -7,
+    DEBUG_RESULT_AXIS_DISABLED = -8,
+    DEBUG_RESULT_DRIVER_ERROR = -9,
+    DEBUG_RESULT_PARTIAL = -10
+} DebugCommandResult;
+
+typedef struct
+{
+    int32_t target_mdeg;
+    int32_t commanded_mdeg;
+    int32_t servo_target_mdeg;
+    uint32_t servo_pulse_us;
+    int32_t measured_mdeg;
+    uint32_t measurement_valid;
+    uint32_t moving;
+    uint32_t response_time_ms;
+    uint32_t active_response_time_ms;
+    uint32_t trajectory_elapsed_ms;
+    int32_t soft_limit_min_mdeg;
+    int32_t soft_limit_max_mdeg;
+    uint32_t limit_reject_count;
+    uint32_t tuning_reject_count;
+    uint32_t servo_enabled;
+    uint32_t calibration_valid;
+    uint32_t raw_pulse_mode;
+    int32_t status;
+} PitchDebugState;
+
+typedef struct
+{
+    int32_t target_mdeg;
+    int32_t quantized_target_mdeg;
+    int32_t commanded_mdeg;
+    int32_t measured_mdeg;
+    uint32_t measurement_valid;
+    int32_t commanded_position_pulses;
+    int32_t zero_offset_pulses;
+    uint32_t remaining_pulses;
+    uint32_t pulse_frequency_hz;
+    uint32_t stepper_state;
+    uint32_t enabled;
+    uint32_t reference_state;
+    int32_t soft_limit_min_mdeg;
+    int32_t soft_limit_max_mdeg;
+    uint32_t soft_limit_enabled;
+    uint32_t limit_reject_count;
+    int32_t status;
+} YawDebugState;
+
+typedef struct
+{
+    uint32_t snapshot_seq;
+    uint32_t version;
+    uint32_t heartbeat;
+    uint32_t tick_ms;
+    uint32_t app_health_flags;
+    uint32_t last_debug_command;
+    int32_t last_debug_result;
+    PitchDebugState pitch;
+    YawDebugState yaw;
+} DebugState;
+
+typedef struct
+{
+    uint32_t request_seq;
+    uint32_t command;
+    int32_t pitch_target_mdeg;
+    int32_t yaw_target_mdeg;
+    uint32_t yaw_frequency_hz;
+    uint32_t pitch_pulse_us;
+    uint32_t pitch_response_time_ms;
+    uint32_t applied_seq;
+    int32_t result;
+} DebugCommand;
+
+typedef struct
+{
+    uint32_t pitch_response_time_ms;
+} DebugTuning;
+
+typedef struct
+{
+    DebugState state;
+    DebugCommand command;
+    DebugTuning tuning;
+} ControlDebugBlock;
+
+/* Defined exactly once in Diagnostics/Src/debug_state.c. */
+extern volatile ControlDebugBlock g_control_debug;
+
+#if (SERVO_CALIBRATION_VALID != 0U) && (SERVO_CALIBRATION_VALID != 1U)
+#error "SERVO_CALIBRATION_VALID must be 0 or 1"
+#endif
+#if (PITCH_SERVO_DIRECTION_SIGN != 1) && (PITCH_SERVO_DIRECTION_SIGN != -1)
+#error "PITCH_SERVO_DIRECTION_SIGN must be +1 or -1"
+#endif
+#if (PITCH_SOFT_MIN_MDEG >= 0L)
+#error "PITCH_SOFT_MIN_MDEG must be negative"
+#endif
+#if (PITCH_SOFT_MAX_MDEG <= 0L)
+#error "PITCH_SOFT_MAX_MDEG must be positive"
+#endif
+#if ((PITCH_LEVEL_SERVO_MDEG + (PITCH_SERVO_DIRECTION_SIGN * PITCH_SOFT_MIN_MDEG)) < SERVO_MIN_ANGLE_MDEG) || \
+    ((PITCH_LEVEL_SERVO_MDEG + (PITCH_SERVO_DIRECTION_SIGN * PITCH_SOFT_MIN_MDEG)) > SERVO_MAX_ANGLE_MDEG)
+#error "Pitch lower software limit maps outside the Servo range"
+#endif
+#if ((PITCH_LEVEL_SERVO_MDEG + (PITCH_SERVO_DIRECTION_SIGN * PITCH_SOFT_MAX_MDEG)) < SERVO_MIN_ANGLE_MDEG) || \
+    ((PITCH_LEVEL_SERVO_MDEG + (PITCH_SERVO_DIRECTION_SIGN * PITCH_SOFT_MAX_MDEG)) > SERVO_MAX_ANGLE_MDEG)
+#error "Pitch upper software limit maps outside the Servo range"
+#endif
+#if (PITCH_RESPONSE_TIME_MIN_MS == 0U) || \
+    (PITCH_RESPONSE_TIME_DEFAULT_MS < PITCH_RESPONSE_TIME_MIN_MS) || \
+    (PITCH_RESPONSE_TIME_DEFAULT_MS > PITCH_RESPONSE_TIME_MAX_MS)
+#error "Pitch response time configuration is invalid"
+#endif
+#if (PITCH_UPDATE_PERIOD_MS == 0U)
+#error "PITCH_UPDATE_PERIOD_MS must be nonzero"
+#endif
+#if (DEBUG_CONTROL_ENABLE != 0) && (DEBUG_CONTROL_ENABLE != 1)
+#error "DEBUG_CONTROL_ENABLE must be 0 or 1"
+#endif
+#if (RAW_BENCH_COMMANDS_ENABLE != 0) && (RAW_BENCH_COMMANDS_ENABLE != 1)
+#error "RAW_BENCH_COMMANDS_ENABLE must be 0 or 1"
+#endif
+
+#endif /* CONTROL_DEBUG_CONFIG_H */

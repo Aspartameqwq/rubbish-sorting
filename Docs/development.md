@@ -1,62 +1,64 @@
 # Development and verification
 
-## Environment
+## Toolchain
 
-- MCU: STM32F103C8T6, LQFP48.
-- CubeMX project: version 6.12.0; firmware package STM32CubeF1 v1.8.7.
-- Language and build: C11, CMake 3.22+, Ninja, GNU Arm Embedded Toolchain.
-- Debugger: J-Link over SWD; the user has confirmed connection, download, and debug. Do not repeat debugger bring-up unless a new concrete failure appears.
+- MCU: STM32F103C8T6 (medium-density, 64 KB Flash / 20 KB RAM target).
+- CubeMX 6.12.0; STM32CubeF1 HAL v1.8.7.
+- Firmware: C11, CMake 3.22+, Ninja, GNU Arm Embedded GCC.
+- Host tests: native C11 compiler, CMake, Ninja and CTest.
+- `STM32CUBE_F1_FW_ROOT` may be supplied as a CMake cache variable or environment variable. Windows default is `%USERPROFILE%/STM32Cube/Repository/STM32Cube_FW_F1_V1.8.7`.
 
-## Current implementation and build status
+## Build and test commands
 
-- Implemented: Servo PWM driver, HC-04 circular DMA/Receive-to-Idle transport, bounded command parser, App scheduling, and centralized configuration.
-- Debug and Release CMake configure/build passed against local STM32CubeF1 v1.8.7 with GNU Arm Embedded GCC 13.2.1. The compiler emitted no warnings. GNU ld reported an RWX LOAD segment warning in both builds; it is recorded separately from compiler warnings.
-- Build memory report: Debug 2,168 bytes RAM / 17,568 bytes Flash; Release 2,184 bytes RAM / 11,180 bytes Flash.
-- Physical Servo PWM measurement, Servo pulse calibration, HC-04 electrical/baud confirmation, pairing, and command exchange remain pending.
+```powershell
+cmake --preset Debug
+cmake --build --preset Debug
 
-The build locates the firmware package through `STM32CUBE_F1_FW_ROOT` (CMake cache variable or environment variable). On Windows, the configured default is `%USERPROFILE%/STM32Cube/Repository/STM32Cube_FW_F1_V1.8.7`.
+cmake --preset Release
+cmake --build --preset Release
+
+cmake -S tests/host -B build/host -G Ninja
+cmake --build build/host
+ctest --test-dir build/host --output-on-failure
+```
+
+Host tests use the native compiler and replace only HAL/TIM/GPIO and UART transport boundaries with local stubs. The actual Servo, TB6600 timing/BSP, Stepper, protocol, and profile C files are compiled into the host test executable. The profile C module is HAL-free.
+
+## Round 2 verification record
+
+- Host C test target: passed; 40,542 checks cover Servo logical/raw state and bounds, command framing/parsing and response, exact 1/2/10/100 pulse termination, graceful stop/direction setup, signed steps including `INT32_MIN`, timing conversion, profile symmetry/range and extreme inputs.
+- Debug: configure/build passed. RAM 2,296 bytes of 20 KB; Flash 24,544 bytes of 64 KB.
+- Release: configure/build passed. RAM 2,304 bytes of 20 KB; Flash 16,724 bytes of 64 KB.
+- Firmware compile produced no compiler warnings after the Servo lower-bound check was made warning-free. GNU ld continues to report the existing `LOAD segment with RWX permissions` linker warning; linker-script changes are outside this round.
+- CubeMX files were reviewed after user generation: `.ioc`, TIM3 setup, PA6 AF push-pull, PB12/PB13 GPIO initialization, `TIM3_IRQHandler`, and `MX_TIM3_Init()` before `App_Init()`. The checked CMake build resolved CubeF1 through the user-managed module instead of the generated CMake file.
+- Hardware checks remain `PENDING`; no board movement, module wiring, waveform measurement, HC-04 pairing, or Servo calibration was performed.
+
+## Static review checklist
+
+Before publishing a branch or updating this record:
+
+1. Check the branch base, working tree and generated-code diff.
+2. Confirm no peripheral access leaks above the BSP and no HAL include leaks into the Motion profile.
+3. Review integer overflow, signed parsing, exact pulse termination, direction setup and IRQ callback work.
+4. Run host tests and clean Debug/Release builds; distinguish compiler warnings from linker warnings.
+5. Confirm docs describe open-loop commanded position and hardware assumptions as unverified.
+6. Review CubeMX `.ioc`/generated source and root CMake source list as one configuration change.
 
 ## CubeMX regeneration
 
-1. Open the checked-in `rubbish-sorting.ioc` and preserve HSE × 9 / 72 MHz clocks, APB1 /2, APB2 /1, and SWD on PA13/PA14.
-2. Configure TIM2_CH1/PA0 and USART1 PA9/PA10 as specified in [hardware.md](hardware.md).
-3. Assign USART1_RX to DMA1 Channel 5 with circular byte transfers; enable both USART1 and DMA1 Channel 5 global NVIC interrupts.
-4. Confirm Project Manager still targets CMake and “Keep User Code when re-generating” remains enabled.
-5. Generate code. Review `.ioc`, generated `tim.*`, `usart.*`, `dma.*`, `stm32f1xx_it.*`, and `stm32f1xx_hal_msp.*` changes before integrating drivers. Confirm DMA mode is Circular and both USART1 and DMA1 Channel 5 IRQ handlers exist.
+Preserve clock tree, SWD, TIM2 Servo, USART1, DMA1_CH5 RX, TIM3_CH1/PA6, PB12 DIR, PB13 ENA and TIM3 IRQ as described in [hardware.md](hardware.md). CubeMX owns `.ioc` and `Core/*`; inspect those changes after generation.
 
-CubeMX owns `.ioc`, `Core/*`, and the peripheral source list in `cmake/stm32cubemx/*`. Keep reusable application, BSP, protocol, and configuration code outside generated files. CubeMX may emit absolute CubeF1 installation paths into its CMake file; this project replaces those with the portable `STM32CUBE_F1_FW_ROOT` lookup, so inspect that file after each regeneration and restore the portable lookup if needed. If a generated-file customization is unavoidable, keep it in a CubeMX user-code region and document its regeneration check.
+The root build does not include `cmake/stm32cubemx/CMakeLists.txt`, where CubeMX can emit local package paths. CubeF1 package lookup and HAL source locations live in `cmake/stm32cube_f1.cmake`; the explicit generated-Core list is in root `CMakeLists.txt`. Review/synchronize it whenever CubeMX adds or removes source files. Keep reusable BSP/Motion/Protocol code and documentation outside generated paths.
 
-## CMake build
+## Physical verification order
 
-From the repository root (PowerShell):
+No physical verification has been done in this round. Before enabling a real driver or moving a motor:
 
-```powershell
-cmake --preset Debug -DSTM32CUBE_F1_FW_ROOT="C:/Users/<user>/STM32Cube/Repository/STM32Cube_FW_F1_V1.8.7"
-cmake --build --preset Debug
-```
+1. Confirm the exact commercial TB6600 module input topology, optocoupler current, 3.3 V compatibility, common ground, ENA/DIR/PUL polarity and motor current settings.
+2. Confirm pulse width and safe maximum frequency from the module documentation and measurement; current values are initial software assumptions only.
+3. With the motor disconnected, scope PUL inactive level, pulse width and rate. Verify exactly 1, 2, 10 and 100 finite pulses and stop edges.
+4. Verify DIR setup time and direction mapping before connecting a mechanically safe motor.
+5. Test Servo near center before any endpoint exploration; calibrate the actual model and safe pulse range.
+6. Confirm HC-04 variant, UART baud, supply/logic levels and pairing before link tests.
 
-For other presets, replace `Debug` with `RelWithDebInfo`, `Release`, or `MinSizeRel`. Build artifacts are under `build/<preset>/`. Do not report a build as verified until both configure and build complete successfully against the generated project and the stated CubeF1 package.
-
-## First-round hardware verification order
-
-1. **Configuration inspection:** confirm MCU/package, clock tree, SWD, TIM2/PA0 parameters, USART1/PA9/PA10, and DMA1 Channel 5 mapping.
-2. **Build inspection:** configure and build all selected CMake presets required for the change; record warnings separately.
-3. **PWM scope check:** with servo mechanics unloaded where possible, measure approximately 20 ms period and 1 µs timer resolution; begin at 1500 µs, then test only 1400 and 1600 µs after confirming the actual servo accepts the pulse range. Do not start at 0° or 270°.
-4. **UART command check:** use a confirmed baud and compatible electrical interface. Verify `PING`, then `SERVO?`, then `SERVO_US` near center. Verify malformed and out-of-range inputs return an error without moving outside configured bounds.
-5. **Recovery check:** test CRLF/LF, a line longer than the 64-byte command buffer, consecutive commands, and recovery after the invalid line. Check DMA/UART counters if exposed.
-6. **Mechanical calibration:** increase pulse range in small steps while observing direction, clearance, and stability. Record the actual Servo model and safe limits before expanding the configured window.
-
-## HC-04 details to confirm
-
-Before interpreting failed communication as a firmware defect, confirm the exact module variant, supply/logic levels, current baud, pairing state, and the peer's UART settings from that module's documentation or direct configuration. `115200` in project configuration is only a provisional test value matching generated code. No default password, AT mode, or electrical level is assumed here.
-
-## Evidence labels
-
-Report these independently:
-
-- **Configuration checked:** verified from `.ioc` and generated peripheral setup.
-- **Build verified:** CMake configure/build completed; include build type and warnings.
-- **Static review checked:** interfaces, DMA ownership, bounds, ISR workload, and generated-code boundary reviewed.
-- **Hardware verified:** measured/tested on the physical board and actual attached modules.
-
-A successful build does not prove Servo movement, Bluetooth pairing, electrical compatibility, or mechanical calibration. Record those only after the corresponding physical checks.
+Keep **configuration checked**, **build verified**, **static review checked**, and **hardware verified** as separate claims. A build does not prove module compatibility, emitted waveform quality, motor movement, shaft position or Servo calibration.

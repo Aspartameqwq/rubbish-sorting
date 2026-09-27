@@ -1,60 +1,48 @@
 # Coding style and implementation rules
 
-This document applies to new STM32 firmware code. Keep code and documentation synchronized whenever a public API, hardware resource, parameter, parser behavior, or module responsibility changes.
+## C and state
 
-## Naming and files
+- Use C11, fixed-width integer types, `bool` and explicit include guards.
+- Public types/functions use the module name and PascalCase; macros use upper snake case; private state and helpers are `static`.
+- Keep public headers limited to public types and APIs. Document units and state semantics where a name alone is not enough.
+- Use checked integer arithmetic and bounded static buffers. No `malloc`, `calloc`, `realloc` or `free` in this firmware milestone.
+- Put shared timing, polarity, buffer and range parameters in `Config/project_config.h`. Mark unverified hardware assumptions `INITIAL_ASSUMPTION` / `TO_BE_CONFIRMED`.
 
-- Public types and functions use module names and PascalCase, e.g. `ServoStatus`, `Servo_Init()`, `HC04_Send()`.
-- Macros use upper snake case, e.g. `SERVO_MAX_ANGLE_DEG`, `HC04_RX_DMA_BUFFER_SIZE`.
-- Local/private names use lower snake case with a domain meaning, e.g. `angle_deg`, `pulse_us`, `consumer_pos`.
-- Public headers declare only public types, constants, and APIs. Keep private state and helper functions in `.c` files.
-- Use traditional include guards consistently. Put the current module header first, then standard headers, HAL/Core headers, and other project headers.
-- Use `static` for functions and state that do not need cross-file linkage. Avoid exposed global state and use APIs across module boundaries.
+## HAL and module boundaries
 
-## Types and configuration
+- `servo.c` alone owns TIM2_CH1 start/stop and compare updates; no Servo DMA.
+- `hc04.c` alone owns USART1, DMA1_CH5 RX state, and UART HAL calls. TX timeouts must be finite; never use `HAL_MAX_DELAY`.
+- `tb6600.c` alone owns TIM3_CH1, PB12 and PB13. PUL timing must use hardware PWM, never GPIO bit-banging or `HAL_Delay()`.
+- `stepper.c` uses only the public TB6600 API and wrap-safe tick query. It owns requested steps and commanded position, not electrical pins or peripheral handles.
+- `stepper_profile.c` must remain pure HAL-free integer mathematics; do not introduce floating point or allocation.
+- `protocol.c` calls public module APIs and transport send/read APIs. It must not access HAL, registers, DMA handles or GPIO.
+- `App` checks and records init outcomes, then schedules bounded/nonblocking module work.
 
-- Prefer fixed-width integer types (`uint8_t`, `uint16_t`, `uint32_t`, `int32_t`) and `bool` where appropriate.
-- Servo angle and pulse APIs use integer types; do not add floating-point Servo calculations.
-- Put hardware and project limits in `Config/project_config.h`; avoid scattered baud, pulse, buffer-size, or timeout literals.
-- Use checked integer arithmetic. Use at least 32-bit intermediates for angle-to-pulse mapping.
-- Do not silently clamp invalid external commands. Validate in Protocol and revalidate safety limits in the driver.
+## Arithmetic, parsing and buffers
 
-## Memory and buffers
+- Check every length, index, cast boundary, multiplication and addition before use.
+- Do not silently clamp external values. Validate in Protocol and revalidate at the lower-level API.
+- Parse UART lines with explicit lengths and digit-by-digit overflow checks. Reject malformed signs, extra tokens and trailing junk.
+- Handle `INT32_MIN` without negating a 32-bit signed value or calling `abs(int32_t)`.
+- Keep one fixed Protocol line buffer; do not add another UART ring buffer or copy chain over circular DMA.
+- `Protocol_Process()` has a fixed byte budget so receive backlog cannot monopolize the main loop.
 
-- Do not use `malloc`, `calloc`, `realloc`, or `free` in this firmware milestone.
-- Use bounded static storage. HC-04 DMA buffer is 256 bytes; command line buffer is 64 bytes.
-- Check every length, index, and numeric conversion before accessing or writing a buffer.
-- Do not add another byte ring buffer or copy chain on top of the circular DMA buffer. Keep only the protocol line buffer beyond the DMA transport storage.
-- Reject truncated, overflowing, signed, or trailing-garbage numeric input.
+## Interrupt and timer rules
 
-## HAL and hardware boundaries
+- Keep callbacks short: capture an event, update a bounded counter/flag, and perform only a required hardware cutoff. Never parse commands, format strings, transmit UART replies, change direction or delay in an ISR.
+- TIM3 compare callback counts a completed PUL active width. On the final requested pulse it stops PWM at that compare edge to prevent an extra period; Stepper state and position are reconciled in the main loop.
+- Graceful stop occurs at a complete pulse boundary. Document the possible partial pulse from immediate emergency stop.
+- Check every HAL return value and use named status enums. Avoid unchecked HAL setup or runtime reinitialization of CubeMX-owned configuration.
 
-- Only `servo.c` may start TIM2_CH1 PWM or update its compare value. Servo uses hardware PWM and CPU compare updates; it must not use DMA1 Channel 5.
-- Only `hc04.c` owns USART1/HAL UART transport and RX DMA state. Use finite TX timeouts; never `HAL_MAX_DELAY`.
-- Protocol code calls public BSP APIs and must not call `HAL_UART_*`, use `__HAL_TIM_*`, or access peripheral handles/registers directly.
-- App initializes and schedules modules; keep parser, DMA management, and Servo mapping out of `main.c`.
-- Check and handle HAL return values. Represent driver outcomes with a named status enum rather than `-1`.
+## CubeMX, CMake and docs
 
-## Interrupts and callbacks
+- CubeMX owns `.ioc`, `Core/*` and generated `cmake/stm32cubemx/*`; keep reusable code outside those paths.
+- Root CMake owns a reviewed generated-source list and uses `cmake/stm32cube_f1.cmake` for package resolution. Do not add machine-local absolute paths to tracked files.
+- After CubeMX regeneration, review `.ioc`, generated C sources/headers/IRQs and source-list changes together.
+- Add every project `.c` file and include directory explicitly to the firmware CMake target. Host tests must use a native compiler separately from the ARM toolchain.
+- Keep compiler warnings at zero. Do not suppress a warning, cast away a meaningful type, or remove `const` without a justified fix.
+- Update public docs whenever API, protocol, hardware resource, timing parameter or state semantics change.
 
-ISR and HAL callback work must remain short: capture events, update bounded state/indexes/counters, and perform required low-level recovery. Do not parse commands, format strings, move the Servo, call `HAL_Delay`, or do lengthy logging in an interrupt/callback.
+## Scope exclusions
 
-Run receive consumption and command processing from the main loop. A DMA overrun invalidates the partial command; resume only after line resynchronization. UART/DMA error recovery must not spin forever or block for a long delay.
-
-## Strings and protocol parsing
-
-- Prefer explicit-length comparisons and a small decimal parser with complete error checks.
-- Do not use `gets`, `strcpy`, `strcat`, or unbounded `sprintf`. Avoid `sscanf` for untrusted UART lines.
-- Accept LF and CRLF per the protocol contract. Reject unknown commands, missing values, integer overflow, and out-of-range Servo inputs.
-- Keep response strings and command grammar synchronized with `Docs/protocol.md`.
-
-## CubeMX and CMake
-
-- CubeMX owns `.ioc`, `Core/*`, and `cmake/stm32cubemx/*`; do not place driver logic in generated initialization or interrupt files.
-- Preserve generated user-code regions and review code generation after peripheral changes.
-- Add every source file and include directory explicitly in CMake. The CMake target is the build source of truth; do not rely on IDE source auto-discovery.
-- Keep new compiler warnings at zero. Do not silence a warning by disabling diagnostics, adding an unjustified cast, or removing `const`.
-
-## Scope boundary
-
-The first milestone excludes a full TB6600/Stepper driver, acceleration profiles, Stepper DMA, K230 integration, FreeRTOS, and waste-sorting business logic. Preserve PA6/TIM3_CH1, PB12, PB13, and DMA1 Channel 6 for later work.
+This round does not implement Stepper DMA acceleration, current/microstep DIP control, homing, limit switches, encoders, closed-loop control, S-curves, multiple axes, FreeRTOS, K230 integration or garbage-sorting business logic.

@@ -29,16 +29,22 @@ Numeric fields require digits and explicit overflow/range validation. Servo fiel
 | Command | Action | Success response | Invalid/unavailable |
 |---|---|---|---|
 | `PING` | Check command link | `PONG\r\n` | `ERR\r\n` |
-| `SERVO <0..270>` | Set and retain the requested logical angle | `OK\r\n` | `ERR\r\n` |
+| `SERVO <0..270>` | Set PitchAxis target in whole degrees; active Pitch software limits reject out-of-range requests | `OK\r\n` | `ERR\r\n` |
 | `SERVO?` | Query Servo state | `SERVO <angle>\r\n` | `SERVO RAW <pulse>\r\n` after `SERVO_US`; `ERR\r\n` before initialization |
-| `SERVO_US <pulse>` | Set raw calibrated pulse in the configured range | `OK\r\n` | `ERR\r\n` |
+| `SERVO_US <pulse>` | Set a raw Pitch calibration pulse within the configured min/max; invalidates angle telemetry | `OK\r\n` | `ERR\r\n` |
 | `STEPPER ENABLE` | Enable the TB6600 interface | `OK\r\n` | `ERR\r\n` |
 | `STEPPER DISABLE` | Stop at a complete pulse boundary, then deassert ENA | `OK\r\n` | `ERR\r\n` |
 | `STEPPER MOVE <steps> <frequency>` | Schedule an open-loop finite move | `OK\r\n` | `ERR\r\n` |
 | `STEPPER STOP` | Gracefully stop at the next completed PUL active width | `OK\r\n` | `ERR\r\n` |
 | `STEPPER?` | Query current firmware state | `STEPPER <STATE> POS=<n> REM=<n> FREQ=<n>\r\n` | State is `UNINITIALIZED` or `FAULT` when applicable |
 
-`STEPPER MOVE 0 <valid-frequency>` is a successful no-op. The signed `steps` value is a count of PUL pulses, not degrees or motor full steps; frequency is PUL pulses per second. With the selected 8-microstep setting, 1600 pulses nominally correspond to one revolution of the reported 1.8° motor if directly coupled. Firmware does not read the switches or convert angles. See [Docs/wiring.md](wiring.md) for the selected settings. Positive pulses map to configured logical forward direction; negative pulses map to reverse. A move is rejected while another move is setting direction, running or stopping, while disabled, or if the resulting commanded position would exceed `int32_t` bounds.
+`STEPPER MOVE 0 <valid-frequency>` is a successful no-op. The signed `steps` value is a count of PUL pulses, not degrees or motor full steps; frequency is PUL pulses per second. With the selected 8-microstep setting, 1600 pulses nominally correspond to one revolution of the reported 1.8° motor if directly coupled. Firmware does not read the switches. Positive pulses map to configured logical forward direction; negative pulses map to reverse. A move is rejected while another move is setting direction, running or stopping, while disabled, or if the resulting commanded position would exceed `int32_t` bounds.
+
+## Scope: bench/debug commands
+
+`STEPPER ENABLE/DISABLE/MOVE/STOP/?` is a raw open-loop bench interface to the low-level Stepper state. In particular, `STEPPER MOVE` bypasses YawAxis's manual-reference and software-limit checks. `SERVO_US` is a bounded raw calibration interface; it bypasses angle soft limits and invalidates the Pitch angle estimate. Use them only for controlled bring-up/debugging. Application or future K230 angle commands must call `PitchAxis`/`YawAxis` APIs; see [axis-control.md](axis-control.md) and [debugging.md](debugging.md).
+
+`SERVO <degrees>` is already routed through PitchAxis, but the UART syntax has whole-degree resolution. Ozone's `g_debug_command` accepts millidegrees for finer logical targets. `SERVO?` reports the integer logical Servo target when angle mode is valid, or the raw pulse after calibration mode.
 
 Example:
 

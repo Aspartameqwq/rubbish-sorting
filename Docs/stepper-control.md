@@ -2,11 +2,11 @@
 
 ## Current control model
 
-`Motion/stepper.c` implements one-axis open-loop finite moves using the public TB6600 BSP. It never accesses HAL, GPIO, TIM3 registers, UART or Protocol internals. Positive signed steps select configured forward direction; negative steps select reverse. Magnitude is computed using `int64_t`, so `INT32_MIN` is valid. The requested endpoint is checked against the signed 32-bit commanded-position range before the move starts.
+`Motion/stepper.c` implements one-axis open-loop finite moves using the public TB6600 BSP. YawAxis owns normal angle-based Stepper scheduling and wraps `Stepper_Process()`. The UART `STEPPER ...` commands are retained as raw bench/debug controls and may call the low-level Stepper API directly. Stepper itself never accesses HAL, GPIO, TIM3 registers, UART or Protocol internals. Positive signed steps select configured forward direction; negative steps select reverse. Magnitude is computed using `int64_t`, so `INT32_MIN` is valid. The requested endpoint is checked against the signed 32-bit commanded-position range before the move starts.
 
 `Stepper_GetCommandedPosition()` represents firmware-counted completed PUL compare events. It is not actual shaft position: no encoder, feedback, homing or closed-loop correction exists. Lost motor steps, a truncated emergency-stop pulse, driver disable, power loss or manual shaft movement can make physical position differ from the counter.
 
-The user reports a motor step angle of 1.8° and approximately 1.5 A current. The project selects 8 microsteps from the pictured module label: 200 full steps/revolution × 8 = 1600 PUL pulses/revolution, nominally 0.225° per pulse with direct coupling. `Stepper_MoveSteps()` and `STEPPER MOVE` count PUL pulses, while frequency is PUL pulses per second; firmware does not convert requested pulses into degrees. The selected DIPs and full wiring are recorded in [Docs/wiring.md](wiring.md); actual switch positions and motion remain PENDING verification.
+The user reports a motor step angle of 1.8° and approximately 1.5 A current. The project selects 8 microsteps from the pictured module label: 200 full steps/revolution × 8 = 1600 PUL pulses/revolution, nominally 0.225° per pulse with direct coupling. `Stepper_MoveSteps()` and `STEPPER MOVE` count PUL pulses, while frequency is PUL pulses per second; the low-level Stepper module does not convert requested pulses into degrees. YawAxis provides the separate mdeg/pulse mapping and requires a manual zero before absolute angle commands. The selected DIPs and full wiring are recorded in [Docs/wiring.md](wiring.md); actual switch positions and motion remain PENDING verification.
 
 ## State machine
 
@@ -48,6 +48,12 @@ Position increments/decrements only when the completed-pulse count is consumed o
 `Motion/stepper_profile.c` is pure C integer math and can build without HAL. Given total steps, start frequency, maximum frequency and acceleration in steps/s², it returns a symmetric frequency for each zero-based step index. It uses the discrete kinematic relation `v² = v0² + 2 a s`, integer square root, and caps the peak at the configured maximum. Short moves form a triangular profile; long enough moves reach the maximum and form a trapezoid. The API rejects invalid input and out-of-range step indexes. It produces a mathematical sequence only; the current constant-speed Stepper API does not yet apply it to timer ARR updates.
 
 No floating point, dynamic allocation, S-curve or multi-axis interpolation is used. Tests cover one-, two-, short- and long-step profiles, symmetry, frequency bounds and extreme `uint32_t` inputs.
+
+## Yaw axis and software-limit boundary
+
+YawAxis maps 1600 PUL/rev to 360000 mdeg/rev (225 mdeg/PUL), retains requested and quantized target values, and stores manual zero as an offset above the Stepper count. The commanded angle is still an open-loop estimate, not measured shaft feedback. Configured Yaw/Pitch soft-limit ranges are placeholder values with validity flags disabled by default; they are not active protection. See [axis-control.md](axis-control.md) for range semantics, reference requirements and the future sensor/PID boundary.
+
+Raw `STEPPER MOVE` bypasses YawAxis reference and software-limit checks. Keep it to mechanically safe bench bring-up. Production angle commands must call YawAxis.
 
 ## Future profile DMA design
 

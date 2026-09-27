@@ -10,7 +10,7 @@ Generated configuration is checked against the `.ioc` and generated sources. Mod
 | CubeMX / HAL | CubeMX 6.12.0 / STM32CubeF1 v1.8.7 | Project metadata/package used for build |
 | Clock | HSE 8 MHz × 9; HCLK 72 MHz; APB1 36 MHz; APB1 timer clock 72 MHz | `.ioc` and generated clock setup |
 | Debug | SWD PA13/PA14 | Preserved; user previously reported J-Link working |
-| Servo | TIM2_CH1 / PA0, PSC 71, ARR 19999, initial CCR 1500 | Generated and verified; 1 MHz tick, 50 Hz frame |
+| Servo | TIM2_CH1 / PA0, PSC 71, ARR 19999, initial CCR 1500; project logical horizontal anchor 130° | Generated and verified; 1 MHz tick, 50 Hz frame; actual Servo/linkage calibration remains pending |
 | HC-04 | USART1 TX PA9 / RX PA10, 8N1, 115200 | Generated/config match; actual module baud remains `TO_BE_CONFIRMED` |
 | HC-04 RX DMA | DMA1 Channel 5, circular, byte transfers, high priority | Generated and verified; global IRQ enabled |
 | TB6600 PUL | TIM3_CH1 / PA6, PWM1, initial PSC 71, ARR 49999, CCR 10, high polarity | Generated and verified; BSP checks the timer settings and applies configured polarity |
@@ -81,7 +81,7 @@ The current `.ioc` and generated output have been checked. Regeneration is user-
 
 ### Regeneration review
 
-Check `.ioc`, `Core/Src/tim.c`, `Core/Src/gpio.c`, `Core/Inc/main.h`, `Core/Src/stm32f1xx_it.c`, `Core/Src/stm32f1xx_hal_msp.c`, `dma.c`, `usart.c`, and the root CMake source list. Confirm `MX_TIM3_Init()` runs before `App_Init()`, `TIM3_IRQHandler()` calls `HAL_TIM_IRQHandler(&htim3)`, PA6 is configured as AF push-pull, and PB12/PB13 start low.
+The Round 3 CubeMX regeneration now records `MX_TIM3_Init` in `ProjectManager.functionlistsort`. Check `.ioc`, `Core/Src/tim.c`, `Core/Src/gpio.c`, `Core/Inc/main.h`, `Core/Src/stm32f1xx_it.c`, `Core/Src/stm32f1xx_hal_msp.c`, `dma.c`, `usart.c`, and the root CMake source list. Confirm `MX_USART1_UART_Init()` then `MX_TIM3_Init()` run before `App_Init()`, `TIM3_IRQHandler()` calls `HAL_TIM_IRQHandler(&htim3)`, PA6 is configured as AF push-pull, and PB12/PB13 start low.
 
 CubeMX may write local absolute package paths into `cmake/stm32cubemx/CMakeLists.txt`; root `CMakeLists.txt` intentionally does not include that generated file. CubeF1 lookup uses the user-maintained `cmake/stm32cube_f1.cmake`, so the generated file cannot break root builds. Review Core source changes and update the root source list when CubeMX adds/removes generated files.
 

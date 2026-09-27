@@ -16,10 +16,14 @@ Generated configuration is checked against the `.ioc` and generated sources. Mod
 | TB6600 PUL | TIM3_CH1 / PA6, PWM1, initial PSC 71, ARR 49999, CCR 10, high polarity | Generated and verified; BSP checks the timer settings and applies configured polarity |
 | TB6600 DIR / ENA | PB12 / PB13 push-pull outputs, initial low | Generated and verified; polarity remains a software assumption pending module confirmation |
 | TIM3 interrupt | TIM3 global IRQ enabled and dispatches to HAL | Generated and verified; used for CH1 compare events |
+| TB6600 module marking | `TB6600`, `DC 9–42VDC` on the user-provided photo | Label transcription only; exact variant and connected supply are unknown |
 | Servo pulse window | 1400–1600 µs, center 1500 µs | Narrow initial test window; calibration required |
 | TB6600 pulse width | 10 µs active width | Initial software value; actual module requirement unverified |
 | Step frequency | 20–10,000 steps/s | Initial software limits; not hardware verified |
 | Direction setup | 1 ms nonblocking wait | Initial software value; module timing unverified |
+| Stepper motor | 1.8° step angle, 1.5 A reported current; four leads reported connected to `A+`, `A-`, `B+`, `B-` | User-provided; current rating basis and coil pairing not independently verified |
+| TB6600 DIP settings | Current and microstep switch positions | Not provided; do not assume from the printed selection table |
+| TB6600 signal wiring | Connections to `PUL±`, `DIR±`, `ENA±`, `VCC` and `GND` | Not provided; input topology and 3.3 V compatibility remain unverified |
 
 ## Resource allocation
 

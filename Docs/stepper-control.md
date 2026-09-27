@@ -6,6 +6,8 @@
 
 `Stepper_GetCommandedPosition()` represents firmware-counted completed PUL compare events. It is not actual shaft position: no encoder, feedback, homing or closed-loop correction exists. Lost motor steps, a truncated emergency-stop pulse, driver disable, power loss or manual shaft movement can make physical position differ from the counter.
 
+The user reports a motor step angle of 1.8° and 1.5 A current. At full step, 1.8° corresponds to 200 PUL pulses per revolution. With the TB6600 module set to microstep factor `M`, nominally use `200 × M` pulses per motor revolution, assuming no gearbox. `Stepper_MoveSteps()` and `STEPPER MOVE` count PUL pulses, while the frequency is PUL pulses per second; neither value is converted to full steps or degrees by the firmware. The microstep DIP setting must be known before translating a requested rotation into pulses.
+
 ## State machine
 
 ```text

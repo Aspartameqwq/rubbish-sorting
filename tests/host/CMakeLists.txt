@@ -42,13 +42,18 @@ endfunction()
 configure_host_test_target(firmware_host_tests 1 1)
 configure_host_test_target(firmware_host_tests_release_control 0 0)
 configure_host_test_target(firmware_host_tests_limits 1 1)
+configure_host_test_target(firmware_host_tests_fractional_center 1 1)
 target_compile_definitions(firmware_host_tests_limits PRIVATE
     AXIS_LIMIT_TESTS=1
     YAW_SOFT_LIMIT_VALID=1
     YAW_SOFT_MIN_MDEG=-90000L
     YAW_SOFT_MAX_MDEG=90000L
 )
+target_compile_definitions(firmware_host_tests_fractional_center PRIVATE
+    PITCH_LEVEL_SERVO_MDEG=130500L
+)
 
 add_test(NAME firmware_host_tests COMMAND firmware_host_tests)
 add_test(NAME firmware_host_tests_release_control COMMAND firmware_host_tests_release_control)
 add_test(NAME firmware_host_tests_limits COMMAND firmware_host_tests_limits)
+add_test(NAME firmware_host_tests_fractional_center COMMAND firmware_host_tests_fractional_center)

@@ -1,4 +1,6 @@
 #include "hc04.h"
+#include "debug_state.h"
+#include "pitch_axis.h"
 #include "project_config.h"
 #include "protocol.h"
 #include "servo.h"
@@ -8,6 +10,7 @@
 #include "tb6600_timing.h"
 #include "test_fakes.h"
 #include "tim.h"
+#include "yaw_axis.h"
 
 #include <limits.h>
 #include <stdio.h>
@@ -15,6 +18,10 @@
 
 static unsigned int s_checks;
 static unsigned int s_failures;
+
+#ifndef AXIS_LIMIT_TESTS
+#define AXIS_LIMIT_TESTS 0
+#endif
 
 #define CHECK(expression)                                                        \
     do                                                                           \
@@ -139,7 +146,10 @@ static void Test_InitializeModules(void)
 
     CHECK(Stepper_Init() == STEPPER_STATUS_OK);
     CHECK(!Stepper_IsEnabled());
+    CHECK(PitchAxis_Init() == PITCH_AXIS_STATUS_OK);
+    CHECK(YawAxis_Init() == YAW_AXIS_STATUS_OK);
     Protocol_Init();
+    Debug_Init();
     TestFakes_ResetUart();
     TestFakes_SetTick(100U);
 }
@@ -166,8 +176,13 @@ static void Test_ServoStateAndProtocol(void)
 
     TestFakes_FeedUart("SERVO 1\nSERVO?\n");
     Protocol_Process();
+#if (AXIS_LIMIT_TESTS == 1)
+    CHECK(strcmp(TestFakes_TxData(), "ERR\r\nSERVO RAW 1510\r\n") == 0);
+    CHECK(!Servo_IsAngleValid());
+#else
     CHECK(strcmp(TestFakes_TxData(), "OK\r\nSERVO 1\r\n") == 0);
     CHECK(Servo_GetAngle() == 1U);
+#endif
     TestFakes_ClearTx();
 
     TestFakes_FeedUart("SERVO_US 1510\nSERVO?\n");
@@ -376,6 +391,246 @@ static void Test_ProtocolStepperAndBounds(void)
     CHECK(TestFakes_UartPending() == 0U);
 }
 
+#if (AXIS_LIMIT_TESTS == 0)
+static void Test_CompleteYawTarget(int32_t target_mdeg,
+                                   int32_t expected_relative_pulses,
+                                   int32_t expected_quantized_mdeg)
+{
+    int32_t absolute_target;
+    int32_t delta;
+    uint32_t pulse_count;
+    uint32_t pulse_index;
+    uint32_t now;
+
+    CHECK(YawAxis_SetTargetMilliDeg(target_mdeg, 20U) == YAW_AXIS_STATUS_OK);
+    CHECK(YawAxis_GetTargetMilliDeg() == target_mdeg);
+    CHECK(YawAxis_GetQuantizedTargetMilliDeg() == expected_quantized_mdeg);
+
+    absolute_target = YawAxis_GetZeroOffsetPulses() + expected_relative_pulses;
+    delta = absolute_target - Stepper_GetCommandedPosition();
+    pulse_count = (delta < 0) ? (uint32_t)(-(int64_t)delta) : (uint32_t)delta;
+    if (pulse_count == 0U)
+    {
+        CHECK(YawAxis_GetCommandedMilliDeg() == expected_quantized_mdeg);
+        return;
+    }
+
+    now = TestFakes_GetTick();
+    TestFakes_SetTick(now + STEPPER_DIRECTION_SETUP_MS);
+    YawAxis_Process();
+    CHECK(Stepper_GetState() == STEPPER_STATE_RUNNING);
+    for (pulse_index = 0U; pulse_index < pulse_count; pulse_index++)
+    {
+        HAL_TIM_PWM_PulseFinishedCallback(&htim3);
+    }
+    YawAxis_Process();
+    CHECK(!YawAxis_IsBusy());
+    CHECK(Stepper_GetCommandedPosition() == absolute_target);
+    CHECK(YawAxis_GetCommandedMilliDeg() == expected_quantized_mdeg);
+}
+#endif
+
+static void Test_AxisConversionsAndReference(void)
+{
+    uint32_t now;
+    uint32_t pulse_index;
+
+    CHECK(Servo_Init() == SERVO_STATUS_OK);
+    CHECK(Stepper_Init() == STEPPER_STATUS_OK);
+    CHECK(PitchAxis_Init() == PITCH_AXIS_STATUS_OK);
+    CHECK(YawAxis_Init() == YAW_AXIS_STATUS_OK);
+    CHECK(YawAxis_IsSoftLimitEnabled() == (AXIS_LIMIT_TESTS != 0));
+    CHECK(PitchAxis_IsSoftLimitEnabled() == (AXIS_LIMIT_TESTS != 0));
+    CHECK(YawAxis_GetReferenceState() == YAW_REFERENCE_INVALID);
+    CHECK(YawAxis_GetCommandedMilliDeg() == INT32_MIN);
+    CHECK(YawAxis_GetMeasuredMilliDeg() == INT32_MIN);
+    CHECK(!YawAxis_IsMeasurementValid());
+    CHECK(YawAxis_SetTargetMilliDeg(0, 20U) == YAW_AXIS_STATUS_NOT_REFERENCED);
+
+#if (AXIS_LIMIT_TESTS == 0)
+    CHECK(PitchAxis_SetTargetMilliDeg(0) == PITCH_AXIS_STATUS_OK);
+    CHECK(PitchAxis_GetPulseUs() == SERVO_MIN_PULSE_US);
+    CHECK(PitchAxis_GetCommandedMilliDeg() == 0);
+    CHECK(PitchAxis_SetTargetMilliDeg(130000) == PITCH_AXIS_STATUS_OK);
+    CHECK(PitchAxis_GetPulseUs() == SERVO_CENTER_PULSE_US);
+    CHECK(PitchAxis_GetCommandedMilliDeg() == 130000);
+    CHECK(PitchAxis_GetTargetMilliDeg() == 130000);
+    CHECK(PitchAxis_SetTargetMilliDeg(270000) == PITCH_AXIS_STATUS_OK);
+    CHECK(PitchAxis_GetPulseUs() == SERVO_MAX_PULSE_US);
+    CHECK(PitchAxis_SetTargetMilliDeg(-1) == PITCH_AXIS_STATUS_INVALID_ARGUMENT);
+    CHECK(PitchAxis_SetTargetMilliDeg(270001) == PITCH_AXIS_STATUS_INVALID_ARGUMENT);
+#else
+    CHECK(PitchAxis_SetTargetMilliDeg(0) == PITCH_AXIS_STATUS_LIMIT);
+    CHECK(PitchAxis_SetTargetMilliDeg(10000) == PITCH_AXIS_STATUS_OK);
+    CHECK(PitchAxis_SetTargetMilliDeg(260000) == PITCH_AXIS_STATUS_OK);
+    CHECK(PitchAxis_SetTargetMilliDeg(260001) == PITCH_AXIS_STATUS_LIMIT);
+    CHECK(PitchAxis_GetLimitRejectCount() == 2U);
+#endif
+
+    CHECK(PitchAxis_SetRawPulseUs(SERVO_MIN_PULSE_US - 1U) ==
+          PITCH_AXIS_STATUS_INVALID_ARGUMENT);
+    CHECK(PitchAxis_SetRawPulseUs(SERVO_MAX_PULSE_US + 1U) ==
+          PITCH_AXIS_STATUS_INVALID_ARGUMENT);
+    CHECK(PitchAxis_SetRawPulseUs(1510U) == PITCH_AXIS_STATUS_OK);
+    CHECK(PitchAxis_IsRawPulseMode());
+    CHECK(!PitchAxis_IsCommandedAngleValid());
+    CHECK(PitchAxis_GetTargetMilliDeg() == INT32_MIN);
+    CHECK(PitchAxis_GetCommandedMilliDeg() == INT32_MIN);
+    CHECK(!PitchAxis_IsMeasurementValid());
+    CHECK(PitchAxis_GetMeasuredMilliDeg() == INT32_MIN);
+
+    CHECK(YawAxis_Enable() == YAW_AXIS_STATUS_OK);
+    CHECK(Stepper_MoveSteps(3, 20U) == STEPPER_STATUS_OK);
+    now = TestFakes_GetTick();
+    TestFakes_SetTick(now + STEPPER_DIRECTION_SETUP_MS);
+    YawAxis_Process();
+    for (pulse_index = 0U; pulse_index < 3U; pulse_index++)
+    {
+        HAL_TIM_PWM_PulseFinishedCallback(&htim3);
+    }
+    YawAxis_Process();
+    CHECK(Stepper_GetCommandedPosition() == 3);
+    CHECK(YawAxis_SetCurrentPositionAsZero() == YAW_AXIS_STATUS_OK);
+    CHECK(YawAxis_GetReferenceState() == YAW_REFERENCE_MANUAL);
+    CHECK(YawAxis_GetZeroOffsetPulses() == 3);
+    CHECK(Stepper_GetCommandedPosition() == 3);
+    CHECK(YawAxis_GetCommandedMilliDeg() == 0);
+
+#if (AXIS_LIMIT_TESTS == 0)
+    Test_CompleteYawTarget(225, 1, 225);
+    Test_CompleteYawTarget(360000, 1600, 360000);
+    Test_CompleteYawTarget(-180000, -800, -180000);
+    Test_CompleteYawTarget(1000, 4, 900);
+    Test_CompleteYawTarget(0, 0, 0);
+#else
+    CHECK(YawAxis_ValidateTargetMilliDeg(-90001, 20U) == YAW_AXIS_STATUS_LIMIT);
+    CHECK(YawAxis_ValidateTargetMilliDeg(-90000, 20U) == YAW_AXIS_STATUS_OK);
+    CHECK(YawAxis_ValidateTargetMilliDeg(90000, 20U) == YAW_AXIS_STATUS_OK);
+    CHECK(YawAxis_ValidateTargetMilliDeg(90001, 20U) == YAW_AXIS_STATUS_LIMIT);
+    CHECK(YawAxis_SetTargetMilliDeg(90001, 20U) == YAW_AXIS_STATUS_LIMIT);
+    CHECK(YawAxis_GetLimitRejectCount() == 1U);
+#endif
+}
+
+static void Test_DebugTelemetryAndMailbox(void)
+{
+    uint32_t initial_pulse;
+    uint32_t heartbeat;
+#if (DEBUG_CONTROL_ENABLE == 1)
+    uint32_t pulse_index;
+    uint32_t now;
+#endif
+    int32_t initial_yaw_position;
+    int32_t initial_pitch_target;
+
+    CHECK(PitchAxis_SetTargetMilliDeg(130000) == PITCH_AXIS_STATUS_OK);
+    CHECK(YawAxis_IsEnabled());
+    Debug_Init();
+    Debug_Process(UINT32_MAX - 5U, 0xA5U);
+    CHECK(g_debug_state.version == DEBUG_STATE_VERSION);
+    CHECK(g_debug_state.heartbeat == 1U);
+    CHECK(g_debug_state.app_health_flags == 0xA5U);
+    CHECK(g_debug_state.pitch.target_mdeg == 130000);
+    CHECK(g_debug_state.pitch.commanded_mdeg == 130000);
+    CHECK(g_debug_state.pitch.measured_mdeg == INT32_MIN);
+    CHECK(g_debug_state.pitch.measurement_valid == 0U);
+    CHECK(g_debug_state.pitch.pulse_us == SERVO_CENTER_PULSE_US);
+    CHECK(g_debug_state.pitch.soft_limit_enabled == (AXIS_LIMIT_TESTS != 0));
+    CHECK(g_debug_state.yaw.commanded_mdeg != INT32_MIN);
+    CHECK(g_debug_state.yaw.measured_mdeg == INT32_MIN);
+    CHECK(g_debug_state.yaw.measurement_valid == 0U);
+
+    heartbeat = g_debug_state.heartbeat;
+    Debug_Process(14U, 0xA5U);
+    CHECK(g_debug_state.heartbeat == heartbeat + 1U);
+    heartbeat = g_debug_state.heartbeat;
+    Debug_Process(33U, 0x5AU);
+    CHECK(g_debug_state.heartbeat == heartbeat);
+    Debug_Process(34U, 0x5AU);
+    CHECK(g_debug_state.heartbeat == heartbeat + 1U);
+    CHECK(g_debug_state.app_health_flags == 0x5AU);
+
+    initial_pulse = PitchAxis_GetPulseUs();
+    initial_pitch_target = PitchAxis_GetTargetMilliDeg();
+    CHECK(initial_pitch_target == 130000);
+    g_debug_command.pitch_target_mdeg = 45000;
+    g_debug_command.command = DEBUG_CMD_SET_PITCH_MDEG;
+    g_debug_command.request_seq = 1U;
+    Debug_Process(54U, 0U);
+    CHECK(g_debug_command.applied_seq == 1U);
+#if (DEBUG_CONTROL_ENABLE == 1)
+    CHECK(g_debug_command.result == DEBUG_RESULT_OK);
+    CHECK(PitchAxis_GetTargetMilliDeg() == 45000);
+    CHECK(PitchAxis_GetPulseUs() != initial_pulse);
+#else
+    CHECK(g_debug_command.result == DEBUG_RESULT_DISABLED);
+    CHECK(PitchAxis_GetTargetMilliDeg() == initial_pitch_target);
+    CHECK(PitchAxis_GetPulseUs() == initial_pulse);
+#endif
+
+    g_debug_command.pitch_target_mdeg = 90000;
+    Debug_Process(55U, 0U);
+#if (DEBUG_CONTROL_ENABLE == 1)
+    CHECK(PitchAxis_GetTargetMilliDeg() == 45000);
+#else
+    CHECK(PitchAxis_GetTargetMilliDeg() == initial_pitch_target);
+#endif
+    CHECK(g_debug_command.applied_seq == 1U);
+
+    g_debug_command.command = UINT32_MAX;
+    g_debug_command.request_seq = 2U;
+    Debug_Process(56U, 0U);
+#if (DEBUG_CONTROL_ENABLE == 1)
+    CHECK(g_debug_command.result == DEBUG_RESULT_UNKNOWN_COMMAND);
+#else
+    CHECK(g_debug_command.result == DEBUG_RESULT_DISABLED);
+#endif
+    CHECK(g_debug_command.applied_seq == 2U);
+
+#if (DEBUG_CONTROL_ENABLE == 1)
+    g_debug_command.command = DEBUG_CMD_SET_PITCH_PULSE_US;
+    g_debug_command.pitch_pulse_us = 1510U;
+    g_debug_command.request_seq = 3U;
+    Debug_Process(57U, 0U);
+    Debug_Process(74U, 0U);
+    CHECK(g_debug_command.result == DEBUG_RESULT_OK);
+    CHECK(PitchAxis_IsRawPulseMode());
+    CHECK(g_debug_state.pitch.commanded_mdeg == INT32_MIN);
+#endif
+
+    initial_yaw_position = Stepper_GetCommandedPosition();
+    g_debug_command.command = DEBUG_CMD_SET_YAW_MDEG;
+    g_debug_command.yaw_target_mdeg = 1000;
+    g_debug_command.yaw_frequency_hz = 20U;
+    g_debug_command.request_seq = 4U;
+    Debug_Process(75U, 0U);
+    CHECK(g_debug_command.applied_seq == 4U);
+#if (DEBUG_CONTROL_ENABLE == 1)
+    CHECK(g_debug_command.result == DEBUG_RESULT_OK);
+    CHECK(Stepper_GetState() == STEPPER_STATE_DIRECTION_SETUP);
+    now = TestFakes_GetTick();
+    TestFakes_SetTick(now + STEPPER_DIRECTION_SETUP_MS);
+    YawAxis_Process();
+    for (pulse_index = 0U; pulse_index < 4U; pulse_index++)
+    {
+        HAL_TIM_PWM_PulseFinishedCallback(&htim3);
+    }
+    YawAxis_Process();
+    CHECK(Stepper_GetCommandedPosition() == (initial_yaw_position + 4));
+#else
+    CHECK(g_debug_command.result == DEBUG_RESULT_DISABLED);
+    CHECK(Stepper_GetCommandedPosition() == initial_yaw_position);
+#endif
+    Debug_Process(94U, 0U);
+#if (DEBUG_CONTROL_ENABLE == 1)
+    CHECK(g_debug_state.yaw.commanded_position_pulses == (initial_yaw_position + 4));
+    CHECK(g_debug_state.yaw.commanded_mdeg == 900);
+    CHECK(g_debug_state.yaw.remaining_pulses == 0U);
+#else
+    CHECK(g_debug_state.yaw.commanded_position_pulses == initial_yaw_position);
+#endif
+}
+
 int main(void)
 {
     Test_TimingConversion();
@@ -384,6 +639,8 @@ int main(void)
     Test_ServoStateAndProtocol();
     Test_StepperFiniteMoves();
     Test_ProtocolStepperAndBounds();
+    Test_AxisConversionsAndReference();
+    Test_DebugTelemetryAndMailbox();
 
     (void)printf("%u checks, %u failures\n", s_checks, s_failures);
     return (s_failures == 0U) ? 0 : 1;

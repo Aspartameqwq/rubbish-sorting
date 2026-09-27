@@ -61,6 +61,9 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     BSP/Src/tb6600_timing.c
     Motion/Src/stepper.c
     Motion/Src/stepper_profile.c
+    Control/Src/pitch_axis.c
+    Control/Src/yaw_axis.c
+    Diagnostics/Src/debug_state.c
     Protocol/Src/protocol.c
 )
 
@@ -69,6 +72,8 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     App/Inc
     BSP/Inc
     Config
+    Control/Inc
+    Diagnostics/Inc
     Motion/Inc
     Protocol/Inc
     ${STM32CUBE_F1_INCLUDE_DIRS}
@@ -79,6 +84,8 @@ target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
     USE_HAL_DRIVER
     STM32F103xB
     $<$<CONFIG:Debug>:DEBUG>
+    $<$<CONFIG:Debug>:DEBUG_CONTROL_ENABLE=1>
+    $<$<NOT:$<CONFIG:Debug>>:DEBUG_CONTROL_ENABLE=0>
 )
 
 # Add linked libraries.

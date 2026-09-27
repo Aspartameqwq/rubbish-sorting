@@ -15,9 +15,13 @@ typedef enum
 
 ServoStatus Servo_Init(void);
 ServoStatus Servo_SetAngle(uint16_t angle_deg);
+ServoStatus Servo_SetAngleMilliDeg(int32_t angle_mdeg);
 ServoStatus Servo_SetPulseUs(uint16_t pulse_us);
 /* Meaningful only while Servo_IsAngleValid() is true. */
 uint16_t Servo_GetAngle(void);
+/* Requested logical angle and PWM-quantized logical command estimate. */
+int32_t Servo_GetTargetAngleMilliDeg(void);
+int32_t Servo_GetCommandedAngleMilliDeg(void);
 uint16_t Servo_GetPulseUs(void);
 bool Servo_IsAngleValid(void);
 bool Servo_IsInitialized(void);

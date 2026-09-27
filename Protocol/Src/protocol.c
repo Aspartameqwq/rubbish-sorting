@@ -1,6 +1,7 @@
 #include "protocol.h"
 
 #include "hc04.h"
+#include "pitch_axis.h"
 #include "project_config.h"
 #include "servo.h"
 #include "stepper.h"
@@ -444,7 +445,7 @@ static bool Protocol_ExecuteCommand(void)
         (memcmp(s_command_line, servo_prefix, sizeof(servo_prefix) - 1U) == 0))
     {
         if (Protocol_ParseDecimal((uint16_t)(sizeof(servo_prefix) - 1U), &value) &&
-            (Servo_SetAngle(value) == SERVO_STATUS_OK))
+            (PitchAxis_SetTargetMilliDeg((int32_t)value * 1000) == PITCH_AXIS_STATUS_OK))
         {
             Protocol_SendOk();
             return true;
@@ -456,7 +457,7 @@ static bool Protocol_ExecuteCommand(void)
         (memcmp(s_command_line, servo_us_prefix, sizeof(servo_us_prefix) - 1U) == 0))
     {
         if (Protocol_ParseDecimal((uint16_t)(sizeof(servo_us_prefix) - 1U), &value) &&
-            (Servo_SetPulseUs(value) == SERVO_STATUS_OK))
+            (PitchAxis_SetRawPulseUs(value) == PITCH_AXIS_STATUS_OK))
         {
             Protocol_SendOk();
             return true;

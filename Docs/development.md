@@ -24,6 +24,30 @@ ctest --test-dir build/host --output-on-failure
 
 Host tests use the native compiler and replace only HAL/TIM/GPIO and UART transport boundaries with local stubs. The actual Servo, TB6600 timing/BSP, Stepper, protocol, and profile C files are compiled into the host test executable. The profile C module is HAL-free.
 
+## 2026-09-27 Pitch Servo reference and horizontal calibration
+
+- The user supplied a 270° Servo reference of 500/1500/2500 µs at 0°/135°/270°, confirmed a 1:1 Servo-to-platform angle ratio, and confirmed mechanical clearance for ±45° Pitch. Firmware now uses that pulse mapping and a mandatory `-45000..+45000 mdeg` Pitch command range.
+- Live COM5 (115200 baud) returned `PONG`, accepted `SERVO_US 1510`, and read back `SERVO RAW 1510`. `PITCH 30000` was accepted and read back `SERVO 165`; the user saw a clear change from slight forward tilt to pronounced backward tilt. UART `SERVO 140`, `145`, and `148` were each accepted and read back; the user confirmed the platform was horizontal at Servo 148°.
+- `PITCH_LEVEL_SERVO_MDEG=148000` now records that observed horizontal angle. The corresponding calculated PWM target is 1596 µs. `SERVO_CALIBRATION_VALID` remains 0 because the full Servo pulse/angle endpoints have not been measured; the horizontal observation alone does not establish the complete calibration.
+- Before the updated pulse mapping, live Ozone showed TIM2 CCR1 = 1477 and the PA0 high width was about 1.48 ms. The full ±45° physical travel has not been measured in this session.
+- After the 148° source change, host CTest passed 5/5, including 1596 µs horizontal PWM and 1263/1930 µs ±45° boundary expectations. ARM Debug and Release builds passed. GNU ld still reports the existing `LOAD segment with RWX permissions` warning. These software checks do not replace the post-flash physical zero check.
+- After the user flashed and ran the new Debug ELF, live COM5 returned `SERVO 148` at startup. `PITCH 0` returned `OK` and the completed state remained `SERVO 148`. The user confirmed the platform stayed horizontal and reported TIM2 CCR1 = 1596 in Ozone. Their Watch screenshot showed `target_mdeg=0`, `commanded_mdeg=0`, `servo_target_mdeg=148000`, `servo_pulse_us=1596`, `moving=0`, `version=4`, a running heartbeat and an even snapshot sequence. The earlier reported 0 was the Pitch target field, not the Servo target field.
+
+## 2026-09-27 Yaw no-driver-power bench check
+
+- With TB6600 driver power disconnected, the user set a manual cable-neutral Yaw zero in Ozone. The Watch showed `reference_state=1`, `commanded_mdeg=0`, `stepper_state=1` (disabled), and `enabled=0`. COM5 `STEPPER ENABLE` returned `OK` and changed the state to `IDLE`.
+- COM5 `STEPPER MOVE 100 20` returned `OK`; while running the firmware reported `POS=17 REM=83 FREQ=20`, then `IDLE POS=100 REM=0`. Additional no-power tests of -200 and +600 pulses completed at the expected software counts. After a new manual zero at software POS=500, a further +600-pulse test completed at POS=1100. The interface was then disabled; the current software pulse count reflects no-power tests, not physical Yaw rotation.
+- The user's PA6 scope screenshot showed 20.00 Hz and 50.00 ms at 20 ms/div with a 50 kSa/s sample rate. That rate has approximately 20 µs between samples and cannot resolve the configured 10 µs active pulse. The displayed spike shape and clipped `>` peak readings do not establish actual high-level voltage or pulse width. The user chose to stop further waveform testing. TB6600 input current, powered motor response, direction and physical angle remain unverified; a fresh physical cable-neutral zero is required before powered motion.
+
+## 2026-09-27 Yaw 12 V bring-up and ENA polarity correction
+
+- After Ozone restored cable-neutral zero, the user connected a 12 V driver supply and reported 12.3 V. With the old firmware reporting `DISABLED`, COM5 returned three consecutive `PONG` replies, `STEPPER DISABLED POS=1100`, and `SERVO 148`. `STEPPER ENABLE` returned `OK`, then `IDLE`; COM5 stayed responsive. Powered 20- and 100-pulse commands at 20 PUL/s completed in firmware at POS=1120 and POS=1220, with `PONG` after each, but the user saw no motor rotation.
+- While the old firmware reported `ENABLE` (PB13 HIGH), the user felt almost no holding torque. When Codex sent `STEPPER DISABLE` (PB13 LOW), the user felt obvious holding torque and measured A+ to A- as -2.223 V with a DC meter. This identifies the installed module's ENA function as active-low; the phase-voltage reading alone does not measure phase current. Codex then restored PB13 HIGH with the old firmware's `STEPPER ENABLE`, and the user disconnected the 12 V supply.
+- `TB6600_ENABLE_ACTIVE_LEVEL` is now 0, so the BSP drives PB13 HIGH when logically disabled and LOW when enabled. The user regenerated CubeMX configuration with PB13 initial HIGH and PB12 initial LOW; `.ioc` and `Core/Src/gpio.c` were checked. The CubeMX-generated CMake file contained machine-local package paths and was restored to the repository stub; newline-only generated changes were also removed. Host CTest passed 5/5 after the polarity change. The user reflashed the Debug ELF; startup returned `STEPPER DISABLED POS=0`, PB13 was about 3 V, and the motor had no holding torque under 12 V. `STEPPER ENABLE` brought PB13 to 0 V and produced holding torque.
+- Initial powered 20- and 100-pulse commands with corrected ENA polarity advanced the software position but did not visibly rotate the motor. The user found and tightened a loose PUL terminal with driver power disconnected. After a new manual cable-neutral zero at software POS=120, `STEPPER MOVE 100 20` completed at POS=220 and the platform visibly rotated clockwise by roughly 25°; `STEPPER MOVE -100 20` returned to POS=120 and the original mechanical position. The user saw comparable vibration in both directions.
+- The runtime Yaw move uses fixed-frequency open-loop TIM3 pulses, with no PID or encoder feedback. At 50 PUL/s, +100 pulses rotated normally with less vibration than at 20 PUL/s; -100 pulses returned to POS=120. At 100 PUL/s, +100 pulses again rotated normally and more smoothly; -100 pulses returned to POS=120. The driver was then disabled, and the user confirmed the platform was back at the original mechanical position with holding torque gone. The frequency-dependent vibration is consistent with slow discrete stepping or a mechanical resonance, but its exact source remains unmeasured. The roughly 25° visual estimate is close to the nominal 22.5° for 100/1600 revolution; it is not a calibrated scale measurement.
+- The earlier HC-04 link loss under driver power did not recur in this 12 V session: COM5 at 115200 returned `PONG` through ENA changes and 20/50/100 PUL/s powered moves. This establishes end-to-end communication for the tested sequence, not long-term interference immunity. Input current and loaded GPIO levels remain unrecorded.
+
 ## Round 2 verification record
 
 - Host C test target: passed; 40,558 checks cover Servo logical/raw state and bounds, command framing/parsing and response, exact 1/2/10/100 pulse termination, graceful stop/direction setup, signed steps including `INT32_MIN`, timing conversion, profile symmetry/range and extreme inputs, plus TB6600 startup, GPIO direction/enable levels and active-high PWM configuration.
@@ -83,6 +107,16 @@ fractional-center follow-up below.
 - Static source review confirms all application `Stepper_Enable`, `Stepper_Disable`, `Stepper_Stop` and `Stepper_MoveSteps` calls are inside YawAxis; UART Stepper commands call YawAxis wrappers. No CubeMX files were changed.
 - Cable limits use an operator-established open-loop reference and cannot detect missed steps, physical hand movement while disabled, or cable/mechanical condition. Ozone/J-Link and all physical motor, current, voltage and clearance checks remain `PENDING`.
 
+## Yaw cable-wrap final review follow-up
+
+- Host CTest: all four targets passed. Direct target counts: Debug 41,029; Release-control-disabled 40,949; Yaw-limits 41,029; fractional-center 41,039; all reported 0 failures.
+- Coverage adds output-axis scale and derived pulse bounds, 20/500 PUL/s acceptance and 19/501 rejection through angle and relative APIs, Protocol acceptance at 500 and rejection at 501, all Debug command enum values 0–9, disable during a running move, idle disable, STOP preservation, fault invalidation, and `cable_margin_valid` telemetry.
+- ARM Debug build passed. RAM 2,664 bytes of 20 KB; Flash 34,804 bytes of 64 KB. ARM Release build passed. RAM 2,672 bytes of 20 KB; Flash 19,704 bytes of 64 KB.
+- No compiler warnings were observed. GNU ld continues to report the existing `LOAD segment with RWX permissions` warning.
+- `arm-none-eabi-nm` found `g_control_debug` in both ELFs and found no `g_debug_state` or `g_debug_command`. `DEBUG_STATE_VERSION` is 4; prior `YawDebugState` fields remain ordered as before and new fields are appended.
+- Static review confirms Yaw production conversion uses `YAW_AXIS_PULSES_PER_REV`; ±800 PUL is derived from configured angle bounds. All application Stepper actuation remains behind YawAxis. No CubeMX, generated peripheral mapping, Pitch limit/smoothing, Debug command numbering, or selected DIP configuration changed.
+- `git diff --check` passed. Ozone/J-Link observation and physical DIP, current, waveform, transmission ratio, pulse-to-platform angle, motor, and cable-clearance checks remain `PENDING`; `YAW_AXIS_SCALE_VERIFIED=0`.
+
 ## Static review checklist
 
 Before publishing a branch or updating this record:
@@ -104,16 +138,16 @@ The root build does not include `cmake/stm32cubemx/CMakeLists.txt`, where CubeMX
 
 ### TB6600 first hardware bring-up
 
-The project-selected common-cathode signal wiring, 24 V power connection, motor terminals and DIP positions are maintained only in [Docs/wiring.md](wiring.md). Selected wiring is not hardware verification. Keep driver power off until the measured-current and MCU output-voltage checks pass; verify powered-module logic recognition during the staged first bring-up.
+The project-selected common-cathode signal wiring, current 12 V bench power connection, motor terminals and DIP positions are maintained only in [Docs/wiring.md](wiring.md). Selected wiring alone is not hardware verification. Measure input current and loaded MCU output voltage before treating direct-drive compatibility as verified; verify powered-module logic recognition during staged bring-up.
 
-1. With all power off, confirm switch directions/settings, motor coil pairs, terminal wiring and 24 V polarity.
-2. Power only the STM32. Check PB12/PB13 LOW, PA6 idle with no PUL edges, and verify no 24 V reaches any MCU pin.
+1. With all power off, confirm switch directions/settings, motor coil pairs, terminal wiring and 12 V supply polarity.
+2. Power only the STM32. Check PB12 LOW and PB13 HIGH after initialization, PA6 idle with no PUL edges, and verify no driver-supply voltage reaches any MCU pin.
 3. Measure active input current and MCU-driven voltage for PUL, DIR and ENA. The project direct-drive current gate is at most 8 mA per signal; for pulsed PUL, use a shunt and scope/peak measurement rather than relying on a DMM average. Stop if any line exceeds the gate or the loaded MCU output falls outside its datasheet-guaranteed range. Powered-module logic recognition remains a separate check after driver power is applied.
-4. After the electrical gate passes, power the TB6600 from the selected 24 V supply. Check ENA LOW/HIGH physical behavior and capture PUL idle level, high/low widths, frequency and clean stop edges.
+4. After the electrical gate passes, power the TB6600 from the selected 12 V supply. Check that ENA LOW holds the motor and HIGH releases it, then capture PUL idle level, high/low widths, frequency and clean stop edges.
 5. Using a mechanically safe motor at the minimum software rate, verify exactly 1, 2, 10 and 100 PUL pulses, direction setup and logical direction. Record actual motor movement and any missed steps.
 6. Record module marking/revision, supply voltage, DIP positions, input currents, waveform values, ENA behavior, direction and movement. Keep every unmeasured result PENDING.
 
-No physical TB6600 verification has been performed by Codex. The values in software are initial limits until the measurement record supports any change.
+The live bench check confirmed the ENA polarity and 20 Hz PA6 period, but not powered motor rotation or PUL high-level voltage/width. The remaining software values are initial limits until measurement supports any change.
 
 Also test Servo near center before endpoint exploration and calibrate the actual model and safe pulse range. Confirm HC-04 variant, UART baud, supply/logic levels and pairing before link tests.
 

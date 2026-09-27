@@ -10,20 +10,21 @@ Generated configuration is checked against the `.ioc` and generated sources. Mod
 | CubeMX / HAL | CubeMX 6.12.0 / STM32CubeF1 v1.8.7 | Project metadata/package used for build |
 | Clock | HSE 8 MHz × 9; HCLK 72 MHz; APB1 36 MHz; APB1 timer clock 72 MHz | `.ioc` and generated clock setup |
 | Debug | SWD PA13/PA14 | Preserved; user previously reported J-Link working |
-| Servo | TIM2_CH1 / PA0, PSC 71, ARR 19999, initial CCR 1500; project logical horizontal anchor 130° | Generated and verified; 1 MHz tick, 50 Hz frame; actual Servo/linkage calibration remains pending |
-| HC-04 | USART1 TX PA9 / RX PA10, 8N1, 115200 | Generated/config match; actual module baud remains `TO_BE_CONFIRMED` |
+| Servo | TIM2_CH1 / PA0, PSC 71, ARR 19999, generated initial CCR 1500; application Pitch zero targets Servo 148° / CCR 1596 | Generated 1 MHz tick and 50 Hz frame; after flashing, live `SERVO?` returned 148 at boot, Ozone CCR1 was reported as 1596 and the user confirmed horizontal |
+| HC-04 | USART1 TX PA9 / RX PA10, 8N1, 115200 | Generated/config match; live COM5 `PING`/`PONG` verified 115200 communication on the current bench |
 | HC-04 RX DMA | DMA1 Channel 5, circular, byte transfers, high priority | Generated and verified; global IRQ enabled |
-| TB6600 PUL | TIM3_CH1 / PA6, PWM1, initial PSC 71, ARR 49999, CCR 10, high polarity | Generated and verified; BSP checks the timer settings and applies configured polarity |
-| TB6600 DIR / ENA | PB12 / PB13 push-pull outputs, initial low | Generated and verified; selected active-high software levels; physical DIR/ENA behavior pending |
+| TB6600 PUL | TIM3_CH1 / PA6, PWM1, initial PSC 71, ARR 49999, CCR 10, high polarity | Generated/configuration verified; no-power PA6 scope check showed 20.00 Hz / 50.00 ms. The 50 kSa/s capture cannot resolve 10 µs pulse width or actual high voltage |
+| TB6600 DIR / ENA | PB12 / PB13 push-pull outputs, CubeMX initial PB12 LOW and PB13 HIGH | Regenerated configuration verified; powered bench test found PB13 LOW gives holding torque and HIGH releases it; positive pulses rotated Yaw clockwise, negative pulses returned it |
 | TIM3 interrupt | TIM3 global IRQ enabled and dispatches to HAL | Generated and verified; used for CH1 compare events |
-| TB6600 module marking | PUFEIDE `TB6600`, `DC 9–42VDC` on the user-provided photo | Label transcription; exact board revision and connected supply are unknown |
-| Servo pulse window | 1400–1600 µs, center 1500 µs | Narrow initial test window; calibration required |
+| TB6600 module marking | PUFEIDE `TB6600`, `DC 9–42VDC` on the user-provided photo | Label transcription; exact board revision unknown; user reported 12.3 V on the connected 12 V supply |
+| Servo pulse window | 500–2500 µs, center 1500 µs at Servo 135°; observed platform level at Servo 148° / approximately 1596 µs | User-supplied 270° reference and user-observed platform level; full pulse endpoints remain unmeasured |
 | TB6600 pulse width | 10 µs active width | Initial software value; actual module requirement unverified |
-| Step frequency | 20–10,000 PUL pulses/s | Initial software limits; not hardware verified |
+| TB6600 timer frequency | 20–10,000 PUL pulses/s | Low-level software/timer range; not module verified |
+| Yaw mechanism frequency | 20–500 PUL pulses/s | Initial conservative command limit; not a motor/driver rating |
 | Direction setup | 1 ms nonblocking wait | Initial software value; module timing unverified |
 | Stepper motor | 1.8° step angle, 1.5 A reported current; four leads reported connected to `A+`, `A-`, `B+`, `B-` | User-provided; current rating basis and coil pairing not independently verified |
-| TB6600 DIP settings | Project-selected 8 microstep / 1600 PUL per revolution and 1.5 A label row | SW1 OFF, SW2 ON, SW3 OFF; SW4 ON, SW5 ON, SW6 OFF; actual switch positions/current pending |
-| TB6600 wiring topology | Selected 3.3 V direct GPIO, common-cathode wiring | See the [wiring source of truth](wiring.md); GPIO current, logic recognition, waveform and motion remain PENDING |
+| TB6600 DIP settings / Yaw scale | Current assumption: 8 microstep / `YAW_AXIS_PULSES_PER_REV=1600` PUL per output-axis revolution with 1:1 coupling; 1.5 A label row | SW1 OFF, SW2 ON, SW3 OFF; SW4 ON, SW5 ON, SW6 OFF; actual switch positions, ratio and platform angle pending |
+| TB6600 wiring topology | Selected 3.3 V direct GPIO, common-cathode wiring | See the [wiring source of truth](wiring.md); ENA, PUL recognition and bidirectional motion observed at 12 V, while GPIO current and loaded waveform remain unmeasured |
 
 ## Resource allocation
 
@@ -87,7 +88,7 @@ CubeMX may write local absolute package paths into `cmake/stm32cubemx/CMakeLists
 
 ## Selected wiring and pending hardware checks
 
-The project selects a 3.3 V direct-GPIO common-cathode topology and DIP settings based on the user's plan and the pictured module label. The canonical signal, power, motor and switch tables are in [Docs/wiring.md](wiring.md). `Config/project_config.h` uses active-high PUL/ENA and logical FORWARD; the mechanical direction mapping is still unverified. No hardware check is implied by these project decisions.
+The project uses a 3.3 V direct-GPIO common-cathode topology and DIP settings based on the user's plan and the pictured module label. The canonical signal, power, motor and switch tables are in [Docs/wiring.md](wiring.md). `Config/project_config.h` uses active-high PUL, bench-observed active-low ENA and HIGH=logical FORWARD; the mechanical direction mapping is still unverified.
 
 Before applying TB6600 driver power, measure the PUL/DIR/ENA input currents and confirm valid 3.3 V logic levels. The project acceptance gate is at most 8 mA per signal. PUL pulse recognition, ENA behavior, DIR orientation, 10 µs pulse-width margin, safe pulse rate, electrical noise and motor rotation remain PENDING. Do not infer module input behavior from the bare TB6600HG IC datasheet.
 

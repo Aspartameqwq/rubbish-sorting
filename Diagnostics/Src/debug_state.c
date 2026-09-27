@@ -1,6 +1,7 @@
 #include "debug_state.h"
 
 #include "pitch_axis.h"
+#include "sort_task.h"
 #include "yaw_axis.h"
 
 #include <limits.h>
@@ -71,6 +72,11 @@ static int32_t Debug_ExecuteCommand(uint32_t command,
                                     uint32_t pitch_pulse_us,
                                     uint32_t pitch_response_time_ms)
 {
+    if (SortTask_IsBusy() && (command != DEBUG_CMD_YAW_STOP))
+    {
+        return DEBUG_RESULT_BUSY;
+    }
+
     switch (command)
     {
         case DEBUG_CMD_SET_PITCH_MDEG:
@@ -139,6 +145,59 @@ static int32_t Debug_ExecuteCommand(uint32_t command,
         case DEBUG_CMD_NONE:
         default:
             return DEBUG_RESULT_UNKNOWN_COMMAND;
+    }
+}
+#endif
+
+#if (DEBUG_CONTROL_ENABLE != 1)
+static int32_t Debug_ExecuteCommissioningCommand(uint32_t command)
+{
+    YawAxisStatus status;
+
+    if (SortTask_IsBusy() && (command != DEBUG_CMD_YAW_STOP))
+    {
+        return DEBUG_RESULT_BUSY;
+    }
+
+    switch (command)
+    {
+        case DEBUG_CMD_SET_YAW_ZERO:
+            status = YawAxis_SetCurrentPositionAsZero();
+            break;
+        case DEBUG_CMD_YAW_ENABLE:
+            status = YawAxis_Enable();
+            break;
+        case DEBUG_CMD_YAW_DISABLE:
+            status = YawAxis_Disable();
+            break;
+        case DEBUG_CMD_YAW_STOP:
+            status = YawAxis_Stop();
+            break;
+        default:
+            return DEBUG_RESULT_DISABLED;
+    }
+
+    switch (status)
+    {
+        case YAW_AXIS_STATUS_OK:
+            return DEBUG_RESULT_OK;
+        case YAW_AXIS_STATUS_NOT_INITIALIZED:
+            return DEBUG_RESULT_NOT_INITIALIZED;
+        case YAW_AXIS_STATUS_NOT_REFERENCED:
+            return DEBUG_RESULT_NOT_REFERENCED;
+        case YAW_AXIS_STATUS_LIMIT:
+            return DEBUG_RESULT_LIMIT;
+        case YAW_AXIS_STATUS_BUSY:
+            return DEBUG_RESULT_BUSY;
+        case YAW_AXIS_STATUS_DISABLED:
+            return DEBUG_RESULT_AXIS_DISABLED;
+        case YAW_AXIS_STATUS_INVALID_ARGUMENT:
+            return DEBUG_RESULT_INVALID_ARGUMENT;
+        case YAW_AXIS_STATUS_INVALID_STATE:
+            return DEBUG_RESULT_INVALID_STATE;
+        case YAW_AXIS_STATUS_DRIVER_ERROR:
+        default:
+            return DEBUG_RESULT_DRIVER_ERROR;
     }
 }
 #endif
@@ -225,6 +284,13 @@ static DebugState Debug_CaptureSnapshot(uint32_t now_ms, uint32_t app_health_fla
     snapshot.yaw.cable_remaining_positive_pulses =
         YawAxis_GetCableRemainingPositivePulses();
     snapshot.yaw.cable_limit_reject_count = YawAxis_GetLimitRejectCount();
+    snapshot.yaw.axis_pulses_per_rev = YAW_AXIS_PULSES_PER_REV;
+    snapshot.yaw.mdeg_per_pulse = ANGLE_MDEG_PER_REV / YAW_AXIS_PULSES_PER_REV;
+    snapshot.yaw.axis_scale_verified = YAW_AXIS_SCALE_VERIFIED;
+    snapshot.yaw.frequency_min_hz = YAW_STEP_FREQ_MIN_HZ;
+    snapshot.yaw.frequency_max_hz = YAW_STEP_FREQ_MAX_HZ;
+    snapshot.yaw.cable_margin_valid =
+        (YawAxis_GetReferenceState() != YAW_REFERENCE_INVALID) ? 1U : 0U;
 
     return snapshot;
 }
@@ -273,6 +339,13 @@ void Debug_Init(void)
     g_control_debug.state.yaw.cable_limit_max_pulses = YAW_CABLE_LIMIT_MAX_PULSES;
     g_control_debug.state.yaw.cable_margin_to_min_mdeg = DEBUG_ANGLE_INVALID_MDEG;
     g_control_debug.state.yaw.cable_margin_to_max_mdeg = DEBUG_ANGLE_INVALID_MDEG;
+    g_control_debug.state.yaw.axis_pulses_per_rev = YAW_AXIS_PULSES_PER_REV;
+    g_control_debug.state.yaw.mdeg_per_pulse =
+        ANGLE_MDEG_PER_REV / YAW_AXIS_PULSES_PER_REV;
+    g_control_debug.state.yaw.axis_scale_verified = YAW_AXIS_SCALE_VERIFIED;
+    g_control_debug.state.yaw.frequency_min_hz = YAW_STEP_FREQ_MIN_HZ;
+    g_control_debug.state.yaw.frequency_max_hz = YAW_STEP_FREQ_MAX_HZ;
+    g_control_debug.state.yaw.cable_margin_valid = 0U;
     g_control_debug.state.last_debug_result = DEBUG_RESULT_OK;
     g_control_debug.command.result = DEBUG_RESULT_OK;
     g_control_debug.tuning.pitch_response_time_ms = PITCH_RESPONSE_TIME_DEFAULT_MS;
@@ -311,7 +384,7 @@ void Debug_Process(uint32_t now_ms, uint32_t app_health_flags)
                                       pitch_pulse_us,
                                       pitch_response_time_ms);
 #else
-        result = DEBUG_RESULT_DISABLED;
+        result = Debug_ExecuteCommissioningCommand(command);
 #endif
 
         g_control_debug.command.result = result;

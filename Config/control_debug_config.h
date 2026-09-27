@@ -2,37 +2,38 @@
 #define CONTROL_DEBUG_CONFIG_H
 
 #include <stdint.h>
+#include "project_config.h"
 
 /* =============================
  * Servo calibration and Pitch reference
  * ============================= */
 
 #ifndef PITCH_LEVEL_SERVO_MDEG
-#define PITCH_LEVEL_SERVO_MDEG              130000L
+#define PITCH_LEVEL_SERVO_MDEG              148000L
 #endif
 
 #define SERVO_MIN_ANGLE_DEG                 0L
 #define SERVO_MAX_ANGLE_DEG                 270L
 #define SERVO_MIN_ANGLE_MDEG                (SERVO_MIN_ANGLE_DEG * 1000L)
 #define SERVO_MAX_ANGLE_MDEG                (SERVO_MAX_ANGLE_DEG * 1000L)
-#define SERVO_CENTER_ANGLE_MDEG             PITCH_LEVEL_SERVO_MDEG
+#define SERVO_CENTER_ANGLE_MDEG             135000L
 /* Display / legacy integer-degree value only; never use in calibration math. */
 #define SERVO_CENTER_ANGLE_DEG              (SERVO_CENTER_ANGLE_MDEG / 1000L)
 
-/* INITIAL pulse window; verify the actual servo and linkage before increasing it. */
-#define SERVO_MIN_PULSE_US                  1400U
+/* User-supplied 270-degree Servo reference: 0.5/1.5/2.5 ms at 0/135/270 deg. */
+#define SERVO_MIN_PULSE_US                  500U
 #define SERVO_CENTER_PULSE_US               1500U
-#define SERVO_MAX_PULSE_US                  1600U
+#define SERVO_MAX_PULSE_US                  2500U
 #ifndef SERVO_CALIBRATION_VALID
 #define SERVO_CALIBRATION_VALID             0U
 #endif
 
-/* User-adjustable mdeg anchor; mechanically observed near Servo 130 degrees. */
+/* Bench-observed horizontal at Servo 148 deg; 1:1 Pitch-to-Servo angle relation. */
 #define PITCH_SERVO_DIRECTION_SIGN          (+1)
 
 /* Hard logical Pitch limits; there is intentionally no disable switch. */
-#define PITCH_SOFT_MIN_MDEG                 (-30000L)
-#define PITCH_SOFT_MAX_MDEG                 30000L
+#define PITCH_SOFT_MIN_MDEG                 (-45000L)
+#define PITCH_SOFT_MAX_MDEG                 45000L
 
 /* =============================
  * Pitch trajectory
@@ -47,8 +48,18 @@
  * Yaw
  * ============================= */
 
-#define YAW_PULSES_PER_REV                  1600U
+#define YAW_AXIS_PULSES_PER_REV             1600U
+/* Deprecated compatibility alias; production control uses YAW_AXIS_PULSES_PER_REV. */
+#define YAW_PULSES_PER_REV                  YAW_AXIS_PULSES_PER_REV
 #define ANGLE_MDEG_PER_REV                  360000L
+
+/* INITIAL CONSERVATIVE BRING-UP LIMIT; not a motor or driver rating. */
+#define YAW_STEP_FREQ_MIN_HZ                20U
+#define YAW_STEP_FREQ_MAX_HZ                500U
+
+#ifndef YAW_AXIS_SCALE_VERIFIED
+#define YAW_AXIS_SCALE_VERIFIED             0U
+#endif
 
 /*
  * Mandatory cable-wrap limits for the no-slip-ring Yaw mechanism.
@@ -57,15 +68,19 @@
  */
 #define YAW_CABLE_LIMIT_MIN_MDEG            (-180000L)
 #define YAW_CABLE_LIMIT_MAX_MDEG             180000L
-#define YAW_CABLE_LIMIT_MIN_PULSES          (-800L)
-#define YAW_CABLE_LIMIT_MAX_PULSES           800L
+#define YAW_CABLE_LIMIT_MIN_PULSES          (-((int32_t)(((-(int64_t)YAW_CABLE_LIMIT_MIN_MDEG) * \
+                                                          YAW_AXIS_PULSES_PER_REV) / \
+                                                         ANGLE_MDEG_PER_REV)))
+#define YAW_CABLE_LIMIT_MAX_PULSES          ((int32_t)(((int64_t)YAW_CABLE_LIMIT_MAX_MDEG * \
+                                                        YAW_AXIS_PULSES_PER_REV) / \
+                                                       ANGLE_MDEG_PER_REV))
 
 /* =============================
  * Debug and Ozone policy
  * ============================= */
 
 #define DEBUG_SNAPSHOT_PERIOD_MS            20U
-#define DEBUG_STATE_VERSION                 3U
+#define DEBUG_STATE_VERSION                 4U
 
 #ifndef DEBUG_CONTROL_ENABLE
 #if defined(DEBUG)
@@ -166,6 +181,12 @@ typedef struct
     uint32_t cable_remaining_negative_pulses;
     uint32_t cable_remaining_positive_pulses;
     uint32_t cable_limit_reject_count;
+    uint32_t axis_pulses_per_rev;
+    int32_t mdeg_per_pulse;
+    uint32_t axis_scale_verified;
+    uint32_t frequency_min_hz;
+    uint32_t frequency_max_hz;
+    uint32_t cable_margin_valid;
 } YawDebugState;
 
 typedef struct
@@ -237,13 +258,13 @@ extern volatile ControlDebugBlock g_control_debug;
 #if (PITCH_UPDATE_PERIOD_MS == 0U)
 #error "PITCH_UPDATE_PERIOD_MS must be nonzero"
 #endif
-#if (YAW_PULSES_PER_REV == 0U)
-#error "YAW_PULSES_PER_REV must be greater than zero"
+#if (YAW_AXIS_PULSES_PER_REV == 0U)
+#error "YAW_AXIS_PULSES_PER_REV must be greater than zero"
 #endif
 #if (ANGLE_MDEG_PER_REV <= 0L)
 #error "ANGLE_MDEG_PER_REV must be positive"
 #endif
-#if ((ANGLE_MDEG_PER_REV % YAW_PULSES_PER_REV) != 0U)
+#if ((ANGLE_MDEG_PER_REV % YAW_AXIS_PULSES_PER_REV) != 0U)
 #error "Yaw pulses per revolution must divide the angle revolution exactly"
 #endif
 #if (YAW_CABLE_LIMIT_MIN_MDEG >= 0L)
@@ -258,23 +279,37 @@ extern volatile ControlDebugBlock g_control_debug;
 #if ((YAW_CABLE_LIMIT_MAX_MDEG - YAW_CABLE_LIMIT_MIN_MDEG) > ANGLE_MDEG_PER_REV)
 #error "Yaw cable travel must not exceed one revolution"
 #endif
-#if (YAW_CABLE_LIMIT_MIN_PULSES >= 0L)
-#error "Yaw cable minimum pulse limit must be negative"
+#if (((-(YAW_CABLE_LIMIT_MIN_MDEG) * YAW_AXIS_PULSES_PER_REV) % ANGLE_MDEG_PER_REV) != 0L)
+#error "Yaw minimum cable angle must map to an exact pulse count"
 #endif
-#if (YAW_CABLE_LIMIT_MAX_PULSES <= 0L)
-#error "Yaw cable maximum pulse limit must be positive"
+#if (((YAW_CABLE_LIMIT_MAX_MDEG * YAW_AXIS_PULSES_PER_REV) % ANGLE_MDEG_PER_REV) != 0L)
+#error "Yaw maximum cable angle must map to an exact pulse count"
 #endif
-#if (YAW_CABLE_LIMIT_MIN_PULSES >= YAW_CABLE_LIMIT_MAX_PULSES)
-#error "Yaw cable pulse limits must have MIN < MAX"
+#if (YAW_STEP_FREQ_MIN_HZ < TB6600_STEP_FREQ_MIN_HZ)
+#error "Yaw minimum rate is below the TB6600-supported minimum"
 #endif
-#if ((-(YAW_CABLE_LIMIT_MIN_MDEG) * YAW_PULSES_PER_REV) != \
-     (-(YAW_CABLE_LIMIT_MIN_PULSES) * ANGLE_MDEG_PER_REV))
-#error "Yaw minimum cable pulse and angle limits are inconsistent"
+#if (YAW_STEP_FREQ_MAX_HZ > TB6600_STEP_FREQ_MAX_HZ)
+#error "Yaw maximum rate exceeds the TB6600-supported maximum"
 #endif
-#if ((YAW_CABLE_LIMIT_MAX_MDEG * YAW_PULSES_PER_REV) != \
-     (YAW_CABLE_LIMIT_MAX_PULSES * ANGLE_MDEG_PER_REV))
-#error "Yaw maximum cable pulse and angle limits are inconsistent"
+#if (YAW_STEP_FREQ_MIN_HZ > YAW_STEP_FREQ_MAX_HZ)
+#error "Yaw frequency range is invalid"
 #endif
+#if (YAW_AXIS_SCALE_VERIFIED != 0U) && (YAW_AXIS_SCALE_VERIFIED != 1U)
+#error "YAW_AXIS_SCALE_VERIFIED must be 0 or 1"
+#endif
+
+_Static_assert(YAW_CABLE_LIMIT_MIN_PULSES < 0,
+               "Yaw cable minimum pulse limit must be negative");
+_Static_assert(YAW_CABLE_LIMIT_MAX_PULSES > 0,
+               "Yaw cable maximum pulse limit must be positive");
+_Static_assert(YAW_CABLE_LIMIT_MIN_PULSES < YAW_CABLE_LIMIT_MAX_PULSES,
+               "Yaw cable pulse limits must have MIN < MAX");
+_Static_assert((-(int64_t)YAW_CABLE_LIMIT_MIN_MDEG * YAW_AXIS_PULSES_PER_REV) ==
+               (-(int64_t)YAW_CABLE_LIMIT_MIN_PULSES * ANGLE_MDEG_PER_REV),
+               "Yaw minimum cable pulse and angle limits are inconsistent");
+_Static_assert(((int64_t)YAW_CABLE_LIMIT_MAX_MDEG * YAW_AXIS_PULSES_PER_REV) ==
+               ((int64_t)YAW_CABLE_LIMIT_MAX_PULSES * ANGLE_MDEG_PER_REV),
+               "Yaw maximum cable pulse and angle limits are inconsistent");
 #if (DEBUG_CONTROL_ENABLE != 0) && (DEBUG_CONTROL_ENABLE != 1)
 #error "DEBUG_CONTROL_ENABLE must be 0 or 1"
 #endif

@@ -33,6 +33,17 @@ Host tests use the native compiler and replace only HAL/TIM/GPIO and UART transp
 - CubeMX files were reviewed after user generation: `.ioc`, TIM3 setup, PA6 AF push-pull, PB12/PB13 GPIO initialization, `TIM3_IRQHandler`, and `MX_TIM3_Init()` before `App_Init()`. The checked CMake build resolved CubeF1 through the user-managed module instead of the generated CMake file.
 - The selected TB6600 wiring and DIP settings are documented in [wiring.md](wiring.md). Electrical and motion checks remain `PENDING`; no board movement, module input-current or waveform measurement, HC-04 pairing, or Servo calibration was performed.
 
+## Round 3 verification record
+
+- Host CTest: three targets passed. Debug-control target: 40,671 checks; Release-control-disabled target: 40,665 checks; enabled-placeholder-limits target: 40,636 checks; all reported 0 failures.
+- The host coverage includes Pitch's 130°→1500 µs logical anchor and PWM-quantized command estimate; 0°/270° endpoints; raw pulse invalidation; Yaw 1600 PUL/rev and signed nearest-pulse conversion; 225 mdeg/PUL; manual zero offset; requested/quantized target distinction; enabled/disabled limit behavior; sensor-invalid telemetry; heartbeat timing; mailbox sequence/acknowledgment; and Release no-motion behavior.
+- Debug: configure/build passed. RAM 2,520 bytes of 20 KB; Flash 30,788 bytes of 64 KB.
+- Release: configure/build passed. RAM 2,528 bytes of 20 KB; Flash 19,336 bytes of 64 KB.
+- No compiler warnings were observed. GNU ld continues to report the existing `LOAD segment with RWX permissions` warning.
+- `arm-none-eabi-nm` found external `g_debug_state` and `g_debug_command` symbols in both Debug and Release ELFs. This confirms link-visible symbols, not an Ozone/J-Link hardware session.
+- The user regenerated CubeMX output. `.ioc` now lists `MX_TIM3_Init` in `ProjectManager.functionlistsort`; `main.c` calls it after `MX_USART1_UART_Init()` and before `App_Init()`. TIM3 PSC 71, ARR 49999, CH1 pulse 10, IRQ and PA6 mapping were reviewed. CubeMX's rewritten generated CMake file contained absolute local package paths and was excluded; the root build uses the reviewed package resolver.
+- Host simulation and target builds do not verify Servo calibration, TB6600 signal-return continuity, GPIO input current, 3.3 V logic recognition, actual pulse waveform, motor direction/movement or physical angle feedback. Those checks remain `PENDING`.
+
 ## Static review checklist
 
 Before publishing a branch or updating this record:

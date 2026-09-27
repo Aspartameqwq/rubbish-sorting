@@ -36,7 +36,17 @@ Use the selected 3.3 V common-cathode direct-GPIO topology. Do not add external 
                    STM32 GND
 ```
 
-The signal-return terminals and the module's high-voltage `GND` terminal have different roles in this connection table. Connect STM32 GND to `PUL-`, `DIR-`, and `ENA-`; connect the 24 V supply return to the module's `GND` power terminal. Do not assume these terminals are internally isolated or internally tied together; no module schematic is available. If the actual supply or another board ties their returns, record that in the bench notes.
+The signal-return terminals and the module's high-voltage `GND` terminal have different roles in this connection table. Connect STM32 GND to `PUL-`, `DIR-`, and `ENA-`; connect the 24 V supply return to the module's `GND` power terminal. Do not assume these terminals are internally isolated or internally tied together; no module schematic is available.
+
+With **all power removed** and the module disconnected from the MCU and supply, check continuity/resistance separately between each signal return and the TB6600 power return:
+
+| Measurement | Result |
+|---|---|
+| PUL- ↔ power GND | PENDING — record `ISOLATED` or `INTERNALLY_COMMON` |
+| DIR- ↔ power GND | PENDING — record `ISOLATED` or `INTERNALLY_COMMON` |
+| ENA- ↔ power GND | PENDING — record `ISOLATED` or `INTERNALLY_COMMON` |
+
+Record meter mode and observed resistance. This check characterizes this module; it does not change the selected MCU signal-return wiring. If another board or the supply ties returns together, record that too.
 
 ## TB6600 power terminals
 
@@ -112,7 +122,7 @@ Do these checks with the motor mechanically safe and the driver power disabled u
 5. Prepare the selected signal wiring, but leave PA6/PB12/PB13 disconnected from the module. Connect STM32 GND to PUL-/DIR-/ENA-. Check every connection and confirm no 24 V conductor reaches the MCU.
 6. With the MCU outputs disconnected and driver power off, screen PUL, DIR and ENA one at a time using a 3.3 V current-limited source set to an 8 mA ceiling. Use the matching negative input as the source return. Stop if current limit is reached or the active voltage is not valid.
 7. Connect PUL+/DIR+/ENA+ to PA6/PB12/PB13. Power only the STM32. Confirm PB12/PB13 LOW and PA6 idle with no PUL edges. Confirm actual ENA disabled behavior only after driver power is available; do not infer it from the logic level alone.
-8. With TB6600 24 V power still disconnected, send `STEPPER ENABLE`, then `STEPPER MOVE 1 20`. Wait for the move to complete and measure MCU-driven current and voltage; capture PUL pulse current/voltage with suitable instrumentation. Stop if any line exceeds the 8 mA project gate or an MCU output falls outside its datasheet-guaranteed output range under load. Send `STEPPER DISABLE` after the measurement so ENA returns LOW before powering the driver. This unpowered check does not prove that the module recognizes the logic levels.
+8. With TB6600 24 V power still disconnected, send `STEPPER ENABLE`, then `STEPPER MOVE 100 20`. The repeated low-frequency pulses make PUL+ loaded voltage, active current, HIGH width and LOW width measurable; use a suitable series shunt and scope/peak measurement for PUL current. Measure DIR and ENA current/voltage as well. Stop if any line exceeds the 8 mA project gate or an MCU output falls outside its datasheet-guaranteed output range under load. Send `STEPPER DISABLE` after the measurement so ENA returns LOW before powering the driver. This unpowered check does not prove that the module recognizes the logic levels.
 9. After the input-current and MCU-output-voltage checks pass, apply the selected 24 V to TB6600 and confirm the measured voltage at VCC/GND. Keep the motor mechanically secured and ENA LOW while checking the powered driver's inactive behavior.
 10. With the motor mechanically secured, enable the Stepper. Scope PUL inactive level, HIGH width, LOW width and frequency. Check exactly 1, 2, 10 and 100 pulses and clean stop edges at a low rate.
 11. Verify that the powered driver recognizes ENA and PUL at the selected levels, then check logical direction with a mechanically safe low-speed motor test. If the active levels are not recognized, record `DIRECT_GPIO_DRIVE_REJECTED` and stop. If rotation is opposite the project's logical FORWARD, change only `TB6600_DIR_FORWARD_LEVEL`; do not simultaneously swap motor phase leads.

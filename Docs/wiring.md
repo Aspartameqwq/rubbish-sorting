@@ -1,71 +1,71 @@
-# Hardware wiring and first bring-up
+# 硬件接线与首次上电
 
 This is the project's single source of truth for board-to-module wiring, TB6600 wiring and DIP selections. The topology and settings below are **SELECTED** from the user's plan and the photographed module label. Electrical compatibility and all physical behavior remain **PENDING** measurement; selected does not mean verified.
 
 The photo shows a PUFEIDE-marked TB6600 module labeled `DC 9–42VDC`. No separate schematic or exact-revision manufacturer manual is available. Board-specific input behavior is therefore not inferred beyond the visible terminal labels and switch table.
 
-## STM32F103C8T6 hardware resource and wiring table
+## STM32F103C8T6 硬件资源与接线表
 
-| STM32 pin / net | Peripheral / object | External device terminal | Function | Status |
+| STM32 引脚/网络 | 外设/对象 | 外部设备端子 | 用途 | 状态 |
 |---|---|---|---|---|
-| PA0 | TIM2_CH1 | Servo Signal | Pitch Servo PWM | SELECTED |
-| PA6 | TIM3_CH1 | TB6600 PUL+ | Yaw step pulse | SELECTED |
-| PB12 | GPIO Output | TB6600 DIR+ | Yaw direction | SELECTED |
-| PB13 | GPIO Output | TB6600 ENA+ | TB6600 enable | SELECTED |
-| PA9 | USART1_TX | HC-04 RX | UART transmit to module | SELECTED |
-| PA10 | USART1_RX | HC-04 TX | UART receive from module | SELECTED |
-| PA13 | SWDIO | J-Link SWDIO | Debug data | USER-REPORTED WORKING PREVIOUSLY; NOT RETESTED |
-| PA14 | SWCLK | J-Link SWCLK | Debug clock | USER-REPORTED WORKING PREVIOUSLY; NOT RETESTED |
-| STM32 GND | Ground | TB6600 PUL- | PUL signal return | SELECTED |
-| STM32 GND | Ground | TB6600 DIR- | DIR signal return | SELECTED |
-| STM32 GND | Ground | TB6600 ENA- | ENA signal return | SELECTED |
+| PA0 | TIM2_CH1 | 舵机信号线 | Pitch 舵机 PWM | 已选定 |
+| PA6 | TIM3_CH1 | TB6600 PUL+ | Yaw 步进脉冲 | 已选定 |
+| PB12 | GPIO 输出 | TB6600 DIR+ | Yaw 方向 | 已选定 |
+| PB13 | GPIO 输出 | TB6600 ENA+ | TB6600 使能 | 已选定 |
+| PA9 | USART1_TX | HC-04 RX | 向模块发送 UART 数据 | 已选定 |
+| PA10 | USART1_RX | HC-04 TX | 接收模块 UART 数据 | 已选定 |
+| PA13 | SWDIO | J-Link SWDIO | 调试数据 | 用户报告此前可用；本轮未复测 |
+| PA14 | SWCLK | J-Link SWCLK | 调试时钟 | 用户报告此前可用；本轮未复测 |
+| STM32 GND | 地 | TB6600 PUL- | PUL 信号回路 | 已选定 |
+| STM32 GND | 地 | TB6600 DIR- | DIR 信号回路 | 已选定 |
+| STM32 GND | 地 | TB6600 ENA- | ENA 信号回路 | 已选定 |
 
-This table records the selected connection plan; it does not assert that every lead, voltage, or signal has been measured on the current bench setup.
+此表记录当前选定的接线方案；不代表已在当前台架上测量所有导线、电压或信号。
 
-## Servo wiring and supply
+## 舵机接线与供电
 
-| Servo lead | STM32 / supply connection | Status |
+| 舵机引线 | STM32/电源连接 | 状态 |
 |---|---|---|
-| Signal | PA0 / TIM2_CH1 | SELECTED |
-| GND | Control/system ground | SELECTED |
-| V+ | Separate regulated supply matching the exact Servo model | TO BE CONFIRMED |
+| 信号线 | PA0 / TIM2_CH1 | 已选定 |
+| GND | 控制系统地 | 已选定 |
+| V+ | 与舵机具体型号匹配的独立稳压电源 | 待确认 |
 
 Do not power a high-current Servo from an STM32 GPIO or the 3.3 V rail. Confirm the Servo's rated supply voltage and stall/current requirement from its exact model documentation. Connect Servo ground to the control ground so the PWM signal has a shared reference; size the external supply for the Servo load.
 
-## HC-04 wiring and voltage
+## HC-04 接线与电压
 
-| STM32 | HC-04 | Status |
+| STM32 端 | HC-04 端 | 状态 |
 |---|---|---|
-| PA9 / USART1_TX | RX | SELECTED |
-| PA10 / USART1_RX | TX | SELECTED |
-| Control ground | GND | SELECTED |
-| Module VCC | Supply allowed by the exact module variant | TO BE CONFIRMED |
+| PA9 / USART1_TX | RX | 已选定 |
+| PA10 / USART1_RX | TX | 已选定 |
+| 控制系统地 | GND | 已选定 |
+| 模块 VCC | 符合该模块具体版本要求的电源 | 待确认 |
 
 Confirm the actual module's supply range and UART logic levels from its board markings or documentation. Do not infer that every board sold as HC-04 has the same regulator, level shifting, or pinout.
 
-## J-Link SWD wiring
+## J-Link SWD 接线
 
-| J-Link signal | STM32F103C8T6 | Status |
+| J-Link 信号 | STM32F103C8T6 | 状态 |
 |---|---|---|
-| SWDIO | PA13 | USER-REPORTED WORKING PREVIOUSLY; NOT RETESTED |
-| SWCLK | PA14 | USER-REPORTED WORKING PREVIOUSLY; NOT RETESTED |
-| GND | GND | SELECTED |
-| VTref | Target logic-voltage reference | SELECTED |
+| SWDIO | PA13 | 用户报告此前可用；本轮未复测 |
+| SWCLK | PA14 | 用户报告此前可用；本轮未复测 |
+| GND | GND | 已选定 |
+| VTref | 目标板逻辑电压参考 | 已选定 |
 
 Keep PA13 and PA14 reserved for SWD. VTref is the target reference connection; do not use it as target power unless the J-Link and target documentation explicitly allow that wiring.
 
-## STM32 to TB6600 signal terminals
+## STM32 至 TB6600 信号端子接线
 
 Use the selected 3.3 V common-cathode direct-GPIO topology. Do not add external transistors, MOSFETs, buffers, level shifters, or optocouplers in this task.
 
-| STM32F103C8T6 | Mode | TB6600 terminal | Function | Status |
+| STM32F103C8T6 | 模式 | TB6600 端子 | 用途 | 状态 |
 |---|---|---|---|---|
-| PA6 | TIM3_CH1, alternate-function push-pull | PUL+ | Step pulse, active high | SELECTED |
-| PB12 | GPIO output push-pull | DIR+ | Direction; HIGH is software FORWARD | SELECTED |
-| PB13 | GPIO output push-pull | ENA+ | Enable; HIGH is software enabled | SELECTED |
-| STM32 GND | Ground | PUL- | Signal common negative | SELECTED |
-| STM32 GND | Ground | DIR- | Signal common negative | SELECTED |
-| STM32 GND | Ground | ENA- | Signal common negative | SELECTED |
+| PA6 | TIM3_CH1 复用推挽输出 | PUL+ | 步进脉冲，高电平有效 | 已选定 |
+| PB12 | GPIO 推挽输出 | DIR+ | 方向；高电平为软件定义的正向 | 已选定 |
+| PB13 | GPIO 推挽输出 | ENA+ | 使能；高电平为软件定义的使能态 | 已选定 |
+| STM32 GND | 地 | PUL- | 信号公共负端 | 已选定 |
+| STM32 GND | 地 | DIR- | 信号公共负端 | 已选定 |
+| STM32 GND | 地 | ENA- | 信号公共负端 | 已选定 |
 
 ```text
                  STM32F103C8T6
@@ -90,33 +90,33 @@ The signal-return terminals and the module's high-voltage `GND` terminal have di
 
 With **all power removed** and the module disconnected from the MCU and supply, check continuity/resistance separately between each signal return and the TB6600 power return:
 
-| Measurement | Result |
+| 测量项目 | 结果 |
 |---|---|
-| PUL- ↔ power GND | PENDING — record `ISOLATED` or `INTERNALLY_COMMON` |
-| DIR- ↔ power GND | PENDING — record `ISOLATED` or `INTERNALLY_COMMON` |
-| ENA- ↔ power GND | PENDING — record `ISOLATED` or `INTERNALLY_COMMON` |
+| PUL- ↔ 电源 GND | 待实测——记录为“彼此隔离”或“模块内部共地” |
+| DIR- ↔ 电源 GND | 待实测——记录为“彼此隔离”或“模块内部共地” |
+| ENA- ↔ 电源 GND | 待实测——记录为“彼此隔离”或“模块内部共地” |
 
 Record meter mode and observed resistance. This check characterizes this module; it does not change the selected MCU signal-return wiring. If another board or the supply ties returns together, record that too.
 
-## TB6600 power terminals
+## TB6600 电源端子接线
 
-| DC supply | TB6600 terminal | Status |
+| 直流电源 | TB6600 端子 | 状态 |
 |---|---|---|
-| +24 V DC | VCC | SELECTED |
-| 24 V return / 0 V | GND power terminal | SELECTED |
+| +24 V DC | VCC | 已选定 |
+| 24 V 回路负端 / 0 V | 电源 GND 端子 | 已选定 |
 
 The module label shows a 9–42 V DC range; the project selects a 24 V supply for bring-up. Confirm supply polarity and measured voltage before connecting it. **Never connect 24 V to an STM32 pin or 3.3 V rail.** The actual connected supply and module voltage have not been measured.
 
-## Motor terminals
+## 步进电机端子接线
 
 The user reports a four-wire, two-phase bipolar motor with a 1.8° step angle and approximately 1.5 A current. The four leads are reported connected to the driver's A/B output terminals. Confirm coil pairing with the motor documentation or, with every supply disconnected, use a meter to identify the two low-resistance winding pairs.
 
-| Motor winding | TB6600 terminal | Status |
+| 电机绕组 | TB6600 端子 | 状态 |
 |---|---|---|
-| Coil A, end 1 | A+ | SELECTED |
-| Coil A, end 2 | A- | SELECTED |
-| Coil B, end 1 | B+ | SELECTED |
-| Coil B, end 2 | B- | SELECTED |
+| A 相绕组，线端 1 | A+ | 已选定 |
+| A 相绕组，线端 2 | A- | 已选定 |
+| B 相绕组，线端 1 | B+ | 已选定 |
+| B 相绕组，线端 2 | B- | 已选定 |
 
 ```text
 24 V PSU +  ---------------------- TB6600 VCC
@@ -128,22 +128,22 @@ Motor coil B  -------------------- TB6600 B+ / B-
 
 Never connect or disconnect `A+`, `A-`, `B+`, or `B-` while the driver is powered. Power the complete system down before changing motor wiring or DIP switches.
 
-## Selected DIP positions
+## 已选定的 DIP 拨码位置
 
 Set the switch lever toward the case's printed `ON` marking. The switch positions are a **project selection** based on the photographed table; visually confirm them with all power off before the first power-up.
 
-| Switch | State | Label-table meaning |
+| 拨码开关 | 状态 | 面板表格含义 |
 |---|---|---|
-| SW1 | OFF | 8 microstep row |
-| SW2 | ON | 8 microstep row |
-| SW3 | OFF | 8 microstep row |
-| SW4 | ON | 1.5 A current row |
-| SW5 | ON | 1.5 A current row |
-| SW6 | OFF | 1.5 A current row |
+| SW1 | OFF | 对应 8 细分档 |
+| SW2 | ON | 对应 8 细分档 |
+| SW3 | OFF | 对应 8 细分档 |
+| SW4 | ON | 对应 1.5 A 电流档 |
+| SW5 | ON | 对应 1.5 A 电流档 |
+| SW6 | OFF | 对应 1.5 A 电流档 |
 
 For the pictured module's table, the selected microstep row is 8 microsteps and 1600 PUL pulses/revolution for a 1.8° motor. That corresponds nominally to 0.225° per PUL pulse with direct coupling. The selected current row is marked `Current(A) 1.5` and `PK Current 1.7`; this is a transcription of the case label, not a measurement or confirmation of how the motor rating is specified. Keep current verification pending.
 
-## GPIO and current limits
+## GPIO 与电流限制
 
 Keep PA6 on TIM3_CH1 alternate-function push-pull, PB12/PB13 on push-pull GPIO outputs, and the current CubeMX output-speed settings. PA6, PB12 and PB13 remain the selected pins; the PA/PB port letters do not provide a special high-current GPIO mode. PC13/PC14/PC15 have a lower 3 mA drive restriction and are not suitable substitutes for this direct-input scheme. See ST's [STM32F103x8/xB datasheet (DS5319)](https://www.st.com/resource/en/datasheet/stm32f103c8.pdf) and [RM0008 reference manual](https://www.st.com/resource/en/reference_manual/cd00171190-stm32f101-103-105-107-stm32f100-series-armbased-32bit-mcus-stmicroelectronics.pdf).
 
@@ -151,17 +151,17 @@ The project uses **8 mA per signal as a conservative direct-drive acceptance gat
 
 STM32 output current also has aggregate VDD/VSS limits. Do not use the datasheet's relaxed-output-voltage current figures as normal design targets. This project has not yet measured the module input current or confirmed reliable 3.3 V recognition.
 
-## Software-selected levels and startup
+## 软件选定电平与启动状态
 
-| Signal | Selected software level | Physical status |
+| 信号 | 软件选定电平 | 实物验证状态 |
 |---|---|---|
-| ENA | HIGH enables; LOW disables | ENA effect PENDING |
-| DIR | HIGH means logical FORWARD; LOW means REVERSE | Mechanical direction PENDING |
-| PUL | Active HIGH; PWM1 | Recognition and waveform PENDING |
+| ENA | HIGH 表示使能；LOW 表示禁用 | ENA 实际效果待实测 |
+| DIR | HIGH 表示逻辑正向；LOW 表示反向 | 机械转向待实测 |
+| PUL | 高电平有效；PWM1 | 驱动器识别与波形待实测 |
 
 CubeMX starts PB12 and PB13 LOW. `TB6600_Init()` leaves ENA inactive and does not start PWM; `App_Init()` does not call `Stepper_Enable()`. PA6 must remain pulse-free until a move explicitly starts the timer. The 10 µs active pulse width and 20–10,000 PUL/s software limits remain initial software values pending measurement.
 
-## First hardware bring-up
+## 首次硬件上电检查
 
 Do these checks with the motor mechanically safe and the driver power disabled until the current gate passes.
 
@@ -178,37 +178,37 @@ Do these checks with the motor mechanically safe and the driver power disabled u
 11. Verify that the powered driver recognizes ENA and PUL at the selected levels, then check logical direction with a mechanically safe low-speed motor test. If the active levels are not recognized, record `DIRECT_GPIO_DRIVE_REJECTED` and stop. If rotation is opposite the project's logical FORWARD, change only `TB6600_DIR_FORWARD_LEVEL`; do not simultaneously swap motor phase leads.
 12. Record module marking, supply voltage, DIP positions, GPIO input currents, waveform measurements, direction result and motor movement. Until recorded, all physical checks below remain PENDING.
 
-## Verification status
+## 验证状态
 
-| Item | Status |
+| 检查项目 | 状态 |
 |---|---|
-| PA6→PUL+, PB12→DIR+, PB13→ENA+ | SELECTED |
-| STM32 GND→PUL-/DIR-/ENA- | SELECTED |
-| 24 V supply→VCC/GND | SELECTED; physical connection and voltage PENDING |
-| Motor windings→A/B terminal pairs | SELECTED; coil pairing not independently verified |
-| SW1 OFF, SW2 ON, SW3 OFF; SW4 ON, SW5 ON, SW6 OFF | SELECTED; physical switch positions PENDING |
-| GPIO input current ≤8 mA per signal | PENDING |
-| PUL levels, pulse width, frequency and count | PENDING |
-| ENA physical behavior | PENDING |
-| DIR mechanical orientation | PENDING |
-| Noise immunity and motor rotation | PENDING |
+| PA6→PUL+，PB12→DIR+，PB13→ENA+ | 已选定 |
+| STM32 GND→PUL-/DIR-/ENA- | 已选定 |
+| 24 V 电源→VCC/GND | 接线方案已选定；实物连接与电压待实测 |
+| 电机绕组→A/B 端子组 | 接线方案已选定；线圈配对尚未独立确认 |
+| SW1 OFF、SW2 ON、SW3 OFF；SW4 ON、SW5 ON、SW6 OFF | 拨码方案已选定；实物位置待检查 |
+| 每路 GPIO 输入电流 ≤8 mA | 待实测 |
+| PUL 电平、脉宽、频率与脉冲计数 | 待实测 |
+| ENA 实际行为 | 待实测 |
+| DIR 机械转向 | 待实测 |
+| 抗干扰能力与电机转动情况 | 待实测 |
 
 The Toshiba [TB6600HG bare-IC datasheet](https://toshiba.semicon-storage.com/info/docget.jsp?did=12780&prodName=TB6600HG) is not a specification for this commercial module's optocoupler input circuit.
 
-## Bench bring-up record
+## 台架上电记录
 
 Fill in **Measured** and **Result** only after performing each physical check. Until then, keep the result `PENDING`; firmware builds and host tests do not establish these values.
 
-| Check | Expected / acceptance target | Measured | Result |
+| 检查项目 | 预期值/验收目标 | 实测值 | 结果 |
 |---|---|---|---|
-| Servo PA0 PWM frame | 20 ms | — | PENDING |
-| Servo horizontal pulse | Around 1500 µs | — | PENDING |
-| Pitch horizontal | Platform is level at Pitch 0 mdeg | — | PENDING |
-| Pitch +5° | Correct documented positive direction, no binding | — | PENDING |
-| Pitch -5° | Correct opposite direction, no binding | — | PENDING |
-| PUL input current | At or below the 8 mA project gate | — | PENDING |
-| PUL active HIGH width | Around 10 µs | — | PENDING |
-| PUL 20 Hz command | Clean 20 Hz output at the selected input | — | PENDING |
-| DIR orientation | Matches logical FORWARD / REVERSE | — | PENDING |
-| ENA behavior | Powered TB6600 responds to enable/disable as expected | — | PENDING |
-| 1600 PUL pulses | Nominally one motor revolution if directly coupled and no steps are lost | — | PENDING |
+| 舵机 PA0 PWM 周期 | 20 ms | — | 待实测 |
+| 舵机水平位置脉宽 | 约 1500 µs | — | 待实测 |
+| Pitch 水平位置 | Pitch 0 mdeg 时平台水平 | — | 待实测 |
+| Pitch +5° | 与定义的正方向一致，机构无卡滞 | — | 待实测 |
+| Pitch -5° | 与正方向相反，机构无卡滞 | — | 待实测 |
+| PUL 输入电流 | 不超过项目 8 mA 限值 | — | 待实测 |
+| PUL 高电平有效脉宽 | 约 10 µs | — | 待实测 |
+| PUL 20 Hz 命令 | 驱动输入端测得稳定的 20 Hz 波形 | — | 待实测 |
+| DIR 转向 | 符合逻辑正向/反向定义 | — | 待实测 |
+| ENA 行为 | TB6600 上电后按预期响应使能/禁用 | — | 待实测 |
+| 1600 个 PUL 脉冲 | 直连且没有丢步时，理论上电机转一圈 | — | 待实测 |

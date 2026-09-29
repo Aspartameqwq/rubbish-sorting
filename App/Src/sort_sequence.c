@@ -4,7 +4,7 @@
 
 /* Change only this array to change the seven-box test order. */
 static const uint8_t s_box_sequence[SORT_SEQUENCE_LENGTH] = {
-    1U, 2U, 3U, 4U, 3U, 2U, 1U};
+    2U, 1U, 3U, 4U, 2U, 3U, 1U};
 
 volatile SortSequenceDebug g_sort_sequence;
 

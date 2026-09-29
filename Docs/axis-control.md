@@ -56,8 +56,8 @@ Pitch uses position commands plus software limits and time-based smoothing. No e
 ### No-slip-ring cable-wrap limit
 
 The Pitch wiring follows the Yaw mechanism and there is no slip ring. Yaw is a
-finite linear coordinate centered on the manually established cable-neutral
-position; it is not a modulo-360 angle:
+finite linear coordinate centered on the software zero that must correspond
+to cable neutral; it is not a modulo-360 angle:
 
 ```text
 -180°                 0°                 +180°
@@ -69,7 +69,7 @@ position; it is not a modulo-360 angle:
 The non-disableable command limits are `-180000..+180000 mdeg`; the matching
 `-800..+800 PUL` bounds are derived at compile time from those angles and
 `YAW_AXIS_PULSES_PER_REV`. Both the requested angle and its quantized
-angle/pulse endpoint are checked. Commands are rejected at the boundary; they
+angle/pulse endpoint are checked. Commands beyond either endpoint are rejected; they
 are never clamped. A move from +170° to -170° follows the signed linear delta
 of about -340°, not a +20° shortest path. No modulo or shortest-path wrapping
 is used.
@@ -90,10 +90,12 @@ target. Under the current 1600 PUL/output-revolution assumption it is
 nominally 18.75 rpm. Raise it only after measured motion is reliable and a
 review updates the limit.
 
-At boot, Yaw reference is `INVALID`, even if the firmware pulse counter is
-zero. The operator must place the mechanism at the natural cable route with
-the Stepper disabled, then issue `DEBUG_CMD_SET_YAW_ZERO`. `SET_YAW_ZERO` is
-rejected while enabled, moving, stopping or faulted. `STOP` preserves a valid
+At application startup, the disabled Stepper's current position is assigned
+software Yaw 0° with reference state `STARTUP_ASSUMED`. This causes no motor
+motion and cannot locate a physical zero; place the mechanism at the natural
+cable route before power-up. `SET_YAW_ZERO` can explicitly re-establish zero
+while disabled and changes the reference state to `MANUAL`. It is rejected
+while enabled, moving, stopping or faulted. `STOP` preserves a valid
 reference. An idle `DISABLE` invalidates it immediately. If disable is
 requested while the axis is running, the reference and final commanded angle
 remain available through `STOPPING`, then become invalid when the Stepper
@@ -117,7 +119,7 @@ assumed 1:1 coupling → 1600 PUL/Yaw-output revolution
 
 Angle requests round to the nearest signed pulse (half steps away from zero);
 requested and quantized targets are both retained. Absolute Yaw requests
-require a manually established cable-neutral zero and an enabled, idle
+require a valid software zero and an enabled, idle
 Stepper. Firmware pulse counts cannot detect missed steps, motor stall,
 mechanical slip, incorrect DIP settings, a transmission-ratio mismatch, or
 hand movement while unpowered. The cable limit is a software command guard,

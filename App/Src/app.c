@@ -45,6 +45,10 @@ void App_Init(void)
     {
         s_health_flags |= APP_HEALTH_YAW_AXIS_INIT_ERROR;
     }
+    else if (YawAxis_AssumeStartupZero() != YAW_AXIS_STATUS_OK)
+    {
+        s_health_flags |= APP_HEALTH_YAW_AXIS_INIT_ERROR;
+    }
 
     Protocol_Init();
     SortTask_Init(s_health_flags);

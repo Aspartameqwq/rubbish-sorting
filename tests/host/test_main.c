@@ -1,3 +1,4 @@
+#include "app.h"
 #include "hc04.h"
 #include "debug_state.h"
 #include "control_debug_config.h"
@@ -32,6 +33,25 @@ static unsigned int s_failures;
             s_failures++;                                                        \
         }                                                                        \
     } while (0)
+
+static void Test_AppStartupYawZero(void)
+{
+    App_Init();
+    CHECK(App_GetHealthFlags() == APP_HEALTH_OK);
+    CHECK(YawAxis_GetReferenceState() == YAW_REFERENCE_STARTUP_ASSUMED);
+    CHECK(YawAxis_GetCommandedMilliDeg() == 0);
+    CHECK(YawAxis_GetTargetMilliDeg() == 0);
+    CHECK(YawAxis_GetSoftLimitMinMilliDeg() == -180000L);
+    CHECK(YawAxis_GetSoftLimitMaxMilliDeg() == 180000L);
+    CHECK(!YawAxis_IsEnabled());
+    CHECK(g_sort_sequence.enabled == 0U);
+    CHECK(YawAxis_Enable() == YAW_AXIS_STATUS_OK);
+    CHECK(YawAxis_ValidateTargetMilliDeg(-180000L, 100U) == YAW_AXIS_STATUS_OK);
+    CHECK(YawAxis_ValidateTargetMilliDeg(180000L, 100U) == YAW_AXIS_STATUS_OK);
+    CHECK(YawAxis_ValidateTargetMilliDeg(-180001L, 100U) == YAW_AXIS_STATUS_LIMIT);
+    CHECK(YawAxis_ValidateTargetMilliDeg(180001L, 100U) == YAW_AXIS_STATUS_LIMIT);
+    CHECK(YawAxis_Disable() == YAW_AXIS_STATUS_OK);
+}
 
 static void Test_TimingConversion(void)
 {
@@ -1597,7 +1617,7 @@ static void Test_CompleteLocalSortAction(void)
 static void Test_LocalSortSequence(void)
 {
     static const uint8_t expected_boxes[SORT_SEQUENCE_LENGTH] =
-        {1U, 2U, 3U, 4U, 3U, 2U, 1U};
+        {2U, 1U, 3U, 4U, 2U, 3U, 1U};
     uint32_t index;
     uint32_t completed_at;
     uint32_t interval_ms;
@@ -1664,7 +1684,7 @@ static void Test_LocalSortSequence(void)
     CHECK(g_sort_sequence.next_index == 0U);
     g_sort_sequence.enabled = 1U;
     SortSequence_Process(TestFakes_GetTick());
-    CHECK(g_sort_sequence.active_box == 1U);
+    CHECK(g_sort_sequence.active_box == 2U);
     g_sort_sequence.enabled = 0U;
     SortSequence_Process(TestFakes_GetTick());
     Test_CompleteLocalSortAction();
@@ -1697,6 +1717,7 @@ static void Test_LocalSortSequenceFault(void)
 
 int main(void)
 {
+    Test_AppStartupYawZero();
     Test_TimingConversion();
     Test_StepperProfile();
     Test_InitializeModules();

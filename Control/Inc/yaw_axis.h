@@ -22,7 +22,8 @@ typedef enum
     YAW_REFERENCE_INVALID = 0,
     YAW_REFERENCE_MANUAL,
     YAW_REFERENCE_HOMED,
-    YAW_REFERENCE_SENSOR
+    YAW_REFERENCE_SENSOR,
+    YAW_REFERENCE_STARTUP_ASSUMED
 } YawReferenceState;
 
 YawAxisStatus YawAxis_Init(void);
@@ -35,6 +36,8 @@ YawAxisStatus YawAxis_SetTargetMilliDeg(int32_t target_mdeg,
 YawAxisStatus YawAxis_MoveRelativePulses(int32_t delta_pulses,
                                          uint32_t pulse_frequency_hz);
 YawAxisStatus YawAxis_SetCurrentPositionAsZero(void);
+/* Startup only: treat the present disabled position as an unmeasured 0 degrees. */
+YawAxisStatus YawAxis_AssumeStartupZero(void);
 YawAxisStatus YawAxis_Stop(void);
 void YawAxis_Process(void);
 

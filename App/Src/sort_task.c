@@ -85,7 +85,7 @@ bool SortTask_ConfigIsValid(void)
     {
         return false;
     }
-    /* Existing axis coordinates define manual yaw zero and horizontal pitch as HOME. */
+    /* Yaw startup/software zero and horizontal pitch define HOME. */
     if ((SORT_YAW_HOME_MDEG != 0L) || (SORT_PITCH_HOME_MDEG != 0L))
     {
         return false;

@@ -83,18 +83,18 @@ software limit is a command guard, not a physical stop or a measured safe range.
 
 | Watch field | Unit / values | Meaning |
 |---|---|---|
-| `state.yaw.target_mdeg` | mdeg | Requested Yaw relative to the manually chosen zero |
+| `state.yaw.target_mdeg` | mdeg | Requested Yaw relative to the startup-assumed or manually reset zero |
 | `state.yaw.quantized_target_mdeg` | mdeg | Requested angle rounded to the nearest realizable PUL position |
 | `state.yaw.commanded_mdeg` | mdeg | Open-loop angle estimated from completed pulses and zero offset |
 | `state.yaw.measured_mdeg` | mdeg | Sensor measurement; currently `INT32_MIN` |
 | `state.yaw.measurement_valid` | 0/1 | Currently 0; no Yaw sensor is implemented |
 | `state.yaw.commanded_position_pulses` | PUL | Firmware's completed-pulse position count |
-| `state.yaw.zero_offset_pulses` | PUL | Pulse count stored by `DEBUG_CMD_SET_YAW_ZERO` |
+| `state.yaw.zero_offset_pulses` | PUL | Pulse count stored at startup or by `DEBUG_CMD_SET_YAW_ZERO` |
 | `state.yaw.remaining_pulses` | PUL | Pulses remaining in the current move |
 | `state.yaw.pulse_frequency_hz` | PUL/s | Current requested pulse frequency |
 | `state.yaw.stepper_state` | enum | `UNINITIALIZED=0`, `DISABLED=1`, `IDLE=2`, `DIR_SETUP=3`, `RUNNING=4`, `STOPPING=5`, `FAULT=6` |
 | `state.yaw.enabled` | 0/1 | Stepper/TB6600 interface enabled state |
-| `state.yaw.reference_state` | enum | `INVALID=0`, `MANUAL=1`; HOMED/SENSOR are reserved states, not implemented workflows |
+| `state.yaw.reference_state` | enum | `INVALID=0`, `MANUAL=1`, `STARTUP_ASSUMED=4`; HOMED=2/SENSOR=3 are reserved |
 | `state.yaw.soft_limit_min_mdeg` / `soft_limit_max_mdeg` | mdeg | Deprecated compatibility names; report the mandatory cable limits -180000 / +180000 |
 | `state.yaw.soft_limit_enabled` | 0/1 | Deprecated compatibility field; always 1 because cable limits cannot be disabled |
 | `state.yaw.limit_reject_count` | count | Compatibility name for the number of Yaw cable-limit rejections |
@@ -111,7 +111,7 @@ software limit is a command guard, not a physical stop or a measured safe range.
 | `state.yaw.axis_scale_verified` | 0/1 | Configuration flag; currently 0 until DIP, transmission ratio and small-angle motion are bench checked |
 | `state.yaw.frequency_min_hz` | PUL/s | Yaw mechanism's current minimum command rate; 20 |
 | `state.yaw.frequency_max_hz` | PUL/s | Initial conservative Yaw command-rate ceiling; 500, not a driver or motor rating |
-| `state.yaw.cable_margin_valid` | 0/1 | Whether software cable angle and pulse margins have a valid manual reference; 0 means do not interpret margins as position |
+| `state.yaw.cable_margin_valid` | 0/1 | Whether software cable angle and pulse margins have a software reference; this does not verify physical cable neutral |
 
 Yaw has no slip ring. Its 0° coordinate is the manually established natural
 Pitch-cable route, and its configured software range is -180°..+180° around
@@ -131,7 +131,7 @@ range. At the assumed 1600 PUL/output revolution it corresponds nominally to
 18.75 rpm; it is not a motor or driver rating. Increase it only after review
 of measured, reliable motion.
 
-`cable_margin_valid == 1` means the software has a manual cable-neutral
+`cable_margin_valid == 1` means the software has a zero reference that assumes cable neutral
 reference and its margins are calculated from completed open-loop pulse
 counts. It does not mean the physical shaft angle was measured. Missed steps,
 stall, mechanical slip, incorrect DIP settings, transmission-ratio mismatch,
@@ -141,8 +141,9 @@ Yaw. `measured_mdeg` remains `INT32_MIN` and `measurement_valid` remains 0.
 When `reference_state == INVALID`, `cable_margin_valid == 0`,
 `target_mdeg`, `quantized_target_mdeg`,
 `commanded_mdeg`, and both angle margins are `INT32_MIN`; do not interpret that
-sentinel as 0°. Pulse margins are 0 while reference is invalid. At boot, the
-Stepper count being zero does not establish cable neutral.
+sentinel as 0°. Pulse margins are 0 while reference is invalid. At application
+startup, the current disabled Stepper position is recorded as zero with
+`STARTUP_ASSUMED=4`; this does not establish physical cable neutral.
 
 ## Response-time tuning
 
@@ -198,7 +199,7 @@ Send only one request at a time:
 | 0 | `DEBUG_CMD_NONE` | No command |
 | 1 | `DEBUG_CMD_SET_PITCH_MDEG` | Set relative Pitch target |
 | 2 | `DEBUG_CMD_SET_PITCH_PULSE_US` | Debug raw pulse; inverse mapped and checked against Pitch limits |
-| 3 | `DEBUG_CMD_SET_YAW_MDEG` | Set Yaw target and frequency; requires manual reference and enabled idle Stepper |
+| 3 | `DEBUG_CMD_SET_YAW_MDEG` | Set Yaw target and frequency; requires a valid software reference and enabled idle Stepper |
 | 4 | `DEBUG_CMD_SET_BOTH_MDEG` | Prevalidate both axis requests, then schedule them |
 | 5 | `DEBUG_CMD_SET_YAW_ZERO` | Save current pulse count as cable-neutral zero; accepted only while Stepper is disabled |
 | 6 | `DEBUG_CMD_YAW_ENABLE` | Enable the Stepper/TB6600 interface |
@@ -261,13 +262,14 @@ is simpler when only the next-move duration needs to change.
 
 ### Yaw cable-zero and +5° example
 
-At boot the Yaw reference is invalid, regardless of the Stepper pulse count.
-With the Stepper/TB6600 disabled, manually place the mechanism where the Pitch
-cable has its natural route and no visible twist. Then send command 5
-(`DEBUG_CMD_SET_YAW_ZERO`). Confirm `reference_state == MANUAL`,
-`commanded_mdeg == 0`, and that `zero_offset_pulses` records the current
-Stepper count. Send command 6 (`DEBUG_CMD_YAW_ENABLE`) and confirm
-`enabled == 1`; only then request a Yaw target. Setting zero while enabled,
+At application startup, the current disabled position is assumed to be Yaw
+0° without motor motion. Before power-up, manually place the mechanism where
+the Pitch cable has its natural route and no visible twist. Confirm
+`reference_state == STARTUP_ASSUMED`, `commanded_mdeg == 0`, and
+`zero_offset_pulses` records the current Stepper count. If you need to
+re-establish zero while disabled, send command 5 (`DEBUG_CMD_SET_YAW_ZERO`)
+and confirm `reference_state == MANUAL`. Send command 6 (`DEBUG_CMD_YAW_ENABLE`)
+and confirm `enabled == 1`; only then request a Yaw target. Setting zero while enabled,
 busy, stopping, or faulted returns `DEBUG_RESULT_INVALID_STATE`.
 
 `DEBUG_CMD_YAW_STOP` preserves the reference after a graceful stop. An idle
@@ -396,8 +398,10 @@ machine-local package paths from generated CMake files.
 
 ## Seven-action local sorting test
 
-The local test runs the fixed box sequence `1, 2, 3, 4, 3, 2, 1` through the
-normal four-box sorting state machine. The next action starts 5000 ms after the
+The local test runs the fixed box sequence `2, 1, 3, 4, 2, 3, 1` through the
+normal four-box sorting state machine. Boxes 1, 2, and 3 occur twice; box 4
+occurs once in the middle, which is the closest possible balance in seven
+actions. The next action starts 5000 ms after the
 previous action has **fully returned to Yaw/Pitch HOME**. The interval is
 measured from completion, so motion time is additional. The sequence runs once;
 it does not repeat automatically.
@@ -424,8 +428,8 @@ sorting. The repository defaults keep these flags unset, so writing `enabled=1`
 on an uncommissioned build leaves it at `WAIT_READY` and does not move the
 actuators. First validate the installed box angles and Pitch directions,
 configure the calibration values described in
-[the four-box protocol](K230_HC04_STM32_四盒分拣通信协议.md), establish the Yaw
-cable-neutral zero while disabled, enable Yaw, and confirm both axes are at
+[the four-box protocol](K230_HC04_STM32_四盒分拣通信协议.md), place Yaw at cable
+neutral before power-up or manually reset zero while disabled, enable Yaw, and confirm both axes are at
 HOME. Do not set a verification flag from a software build alone.
 
 This local test does not create action-history entries or emit synthetic
@@ -482,9 +486,9 @@ prove that the platform or linkage physically reached the target.
 In a Release build, the Ozone command mailbox keeps only Yaw commissioning
 commands available: `DEBUG_CMD_SET_YAW_ZERO`, `DEBUG_CMD_YAW_ENABLE`,
 `DEBUG_CMD_YAW_DISABLE`, and `DEBUG_CMD_YAW_STOP`. For each boot, keep the
-driver disabled, manually align the cable route to its natural zero, set the
-Yaw zero in Ozone, then enable the driver. This reference is volatile and must
-be re-established after reset. The current project defines Pitch zero as
+driver disabled, manually align the cable route to its natural zero before
+power-up, confirm the startup-assumed Yaw zero, then enable the driver. The
+current project defines Pitch zero as
 horizontal. Four-box sorting will not send `R` or accept a new sort action
 until calibration macros, both axis calibration flags, and both home states
 are valid. See the detailed protocol document for the exact compile-time

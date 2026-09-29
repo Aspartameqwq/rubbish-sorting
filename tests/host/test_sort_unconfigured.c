@@ -1,3 +1,4 @@
+#include "app.h"
 #include "hc04.h"
 #include "pitch_axis.h"
 #include "protocol.h"
@@ -38,16 +39,13 @@ static void FeedFrame(const char *content)
 
 int main(void)
 {
-    CHECK(Servo_Init() == SERVO_STATUS_OK);
-    CHECK(TB6600_Init() == TB6600_STATUS_OK);
-    CHECK(Stepper_Init() == STEPPER_STATUS_OK);
-    CHECK(PitchAxis_Init() == PITCH_AXIS_STATUS_OK);
-    CHECK(YawAxis_Init() == YAW_AXIS_STATUS_OK);
-    Protocol_Init();
-    SortTask_Init(0U);
-    SortSequence_Init();
+    App_Init();
     TestFakes_SetTick(100U);
 
+    CHECK(App_GetHealthFlags() == APP_HEALTH_OK);
+    CHECK(YawAxis_GetReferenceState() == YAW_REFERENCE_STARTUP_ASSUMED);
+    CHECK(YawAxis_GetCommandedMilliDeg() == 0);
+    CHECK(!YawAxis_IsEnabled());
     CHECK(!SortTask_ConfigIsValid());
     CHECK(SortTask_AcceptAction(1U, 1U) == SORT_ACCEPT_FAULT);
     FeedFrame("S,1,1");

@@ -319,7 +319,7 @@ YawAxisStatus YawAxis_MoveRelativePulses(int32_t delta_pulses,
     return status;
 }
 
-YawAxisStatus YawAxis_SetCurrentPositionAsZero(void)
+static YawAxisStatus YawAxis_SetZeroReference(YawReferenceState reference_state)
 {
     StepperState stepper_state;
 
@@ -341,12 +341,22 @@ YawAxisStatus YawAxis_SetCurrentPositionAsZero(void)
     }
 
     s_zero_offset_pulses = Stepper_GetCommandedPosition();
-    s_reference_state = YAW_REFERENCE_MANUAL;
+    s_reference_state = reference_state;
     s_reference_invalidate_pending = false;
     s_target_mdeg = 0;
     s_quantized_target_mdeg = 0;
     YawAxis_RecordStatus(YAW_AXIS_STATUS_OK);
     return YAW_AXIS_STATUS_OK;
+}
+
+YawAxisStatus YawAxis_SetCurrentPositionAsZero(void)
+{
+    return YawAxis_SetZeroReference(YAW_REFERENCE_MANUAL);
+}
+
+YawAxisStatus YawAxis_AssumeStartupZero(void)
+{
+    return YawAxis_SetZeroReference(YAW_REFERENCE_STARTUP_ASSUMED);
 }
 
 YawAxisStatus YawAxis_Stop(void)

@@ -6,6 +6,7 @@ enable_testing()
 set(HOST_TEST_SOURCES
     test_main.c
     stubs/fake_hal.c
+    ../../App/Src/app.c
     ../../App/Src/sort_task.c
     ../../App/Src/sort_sequence.c
     ../../BSP/Src/servo.c
@@ -29,6 +30,7 @@ function(configure_host_test_target target debug_control_enabled raw_bench_enabl
         ../../Control/Inc
         ../../Diagnostics/Inc
         ../../Motion/Inc
+        ../../Platform/Inc
         ../../Protocol/Inc
     )
     target_compile_features(${target} PRIVATE c_std_11)
@@ -81,6 +83,7 @@ target_include_directories(firmware_sort_unconfigured_tests PRIVATE
     ../../Control/Inc
     ../../Diagnostics/Inc
     ../../Motion/Inc
+    ../../Platform/Inc
     ../../Protocol/Inc
 )
 target_compile_features(firmware_sort_unconfigured_tests PRIVATE c_std_11)

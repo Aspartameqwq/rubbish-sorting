@@ -99,7 +99,7 @@ fractional-center follow-up below.
 ## Yaw cable-wrap safety verification record
 
 - Host CTest: all four targets passed: Debug bench enabled, Release bench gated, mandatory Yaw limits with the legacy `YAW_SOFT_LIMIT_VALID=0` definition, and fractional Pitch-center configuration.
-- Coverage includes the fixed ±180000 mdeg / ±800 PUL boundaries, rejected out-of-range and quantized targets, relative-pulse guards in both directions, cable margins, invalid boot reference, disabled-only zeroing, STOP reference preservation, DISABLE invalidation, Ozone invalid-angle telemetry, and the +170° to -170° linear reverse path (1512 pulses).
+- Coverage includes the fixed ±180000 mdeg / ±800 PUL boundaries, rejected out-of-range and quantized targets, relative-pulse guards in both directions, cable margins, invalid standalone YawAxis reference, disabled-only zeroing, STOP reference preservation, DISABLE invalidation, Ozone invalid-angle telemetry, and the +170° to -170° linear reverse path (1512 pulses). The application now separately tests its startup-assumed zero.
 - ARM Debug build passed. RAM 2,640 bytes of 20 KB; Flash 34,496 bytes of 64 KB.
 - ARM Release build passed. RAM 2,648 bytes of 20 KB; Flash 19,484 bytes of 64 KB.
 - No compiler warnings were observed. GNU ld continues to report the existing `LOAD segment with RWX permissions` warning.

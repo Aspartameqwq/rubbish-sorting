@@ -62,6 +62,11 @@ uint32_t HAL_GetTick(void)
     return s_tick_ms;
 }
 
+uint32_t SystemTime_GetMs(void)
+{
+    return HAL_GetTick();
+}
+
 void TestFakes_SetTick(uint32_t tick_ms)
 {
     s_tick_ms = tick_ms;
@@ -143,6 +148,15 @@ HAL_StatusTypeDef HAL_TIM_PWM_ConfigChannel(TIM_HandleTypeDef *timer,
         s_tim3_pwm_polarity = config->OCPolarity;
     }
     return HAL_OK;
+}
+
+HC04Status HC04_Init(void)
+{
+    return HC04_STATUS_OK;
+}
+
+void HC04_Process(void)
+{
 }
 
 HC04Status HC04_ReadByte(uint8_t *byte)

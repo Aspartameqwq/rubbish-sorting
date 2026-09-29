@@ -56,7 +56,7 @@ The HC-04 DMA buffer is the only transport byte buffer. Protocol owns one fixed 
 
 Pitch 0° is the platform horizontal position observed at Servo 148° (approximately 1596 µs). The user confirms a 1:1 Servo-to-platform angle ratio and clearance for ±45° Pitch. Positive Pitch increases the Servo angle and tilted the platform backward during the bench check. The software rejects targets outside ±45°; its commanded value is not sensor feedback.
 
-Yaw commanded angle comes from completed PUL counts relative to the manual zero offset. Neither axis has measured-angle feedback: both measured fields stay `INT32_MIN` and `measurement_valid=0` until sensor paths are implemented. Absolute Yaw requests require a valid manual reference. PID remains out of scope without valid feedback.
+Yaw commanded angle comes from completed PUL counts relative to the startup-assumed or manually reset zero offset. Neither axis has measured-angle feedback: both measured fields stay `INT32_MIN` and `measurement_valid=0` until sensor paths are implemented. Absolute Yaw requests require a valid software reference. PID remains out of scope without valid feedback.
 
 ## Interrupt boundary
 

@@ -25,6 +25,11 @@ and debug symbols. Sorting remains disabled while the mechanical calibration
 flag and axis calibration flags are unset, so no `R` is sent in the default
 uncommissioned build.
 
+An Ozone-controlled, fixed seven-action local test is described in
+[debugging.md](debugging.md#seven-action-local-sorting-test). While it is
+enabled, new framed sorting requests receive `BUSY` and Ready heartbeats are
+suppressed; local test actions produce no peer `A` or `D` frames.
+
 ## Legacy text-command protocol
 
 ### Transport and framing

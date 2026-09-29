@@ -7,6 +7,7 @@
 #include "project_config.h"
 #include "servo.h"
 #include "sort_task.h"
+#include "sort_sequence.h"
 #include "stepper.h"
 #include "yaw_axis.h"
 
@@ -645,6 +646,13 @@ static void Protocol_HandleSortAction(uint32_t action_id, uint32_t box_value)
         return;
     }
 
+    if (SortSequence_IsEnabled())
+    {
+        Protocol_Increment(&protocol_busy_reject_count);
+        Protocol_SendNack(action_id, PROTOCOL_NACK_BUSY);
+        return;
+    }
+
     accept_status = SortTask_AcceptAction(action_id, (uint8_t)box_value);
     switch (accept_status)
     {
@@ -799,7 +807,7 @@ static bool Protocol_ExecuteCommand(void)
                  servo_us_prefix,
                  sizeof(servo_us_prefix) - 1U) == 0));
 
-    if (SortTask_IsBusy() && motion_command &&
+    if ((SortTask_IsBusy() || SortSequence_IsEnabled()) && motion_command &&
         !((s_command_length == (sizeof(stepper_stop) - 1U)) &&
           (memcmp(s_command_line, stepper_stop, sizeof(stepper_stop) - 1U) == 0)))
     {
@@ -1084,7 +1092,7 @@ void Protocol_Process(void)
         Protocol_ProcessByte(byte);
     }
 
-    if (SortTask_IsReady())
+    if (!SortSequence_IsEnabled() && SortTask_IsReady())
     {
         const uint32_t now_ms = HAL_GetTick();
         if (!s_ready_heartbeat_started ||

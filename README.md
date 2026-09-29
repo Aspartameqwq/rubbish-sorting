@@ -68,6 +68,7 @@ CubeMX 会生成 `Core/*`、`.ioc` 和 `cmake/stm32cubemx/*`。仓库 root CMake
 - [Stepper 控制与 profile](Docs/stepper-control.md)
 - [Pitch/Yaw 轴控制、角度语义与 PID 路线图](Docs/axis-control.md)
 - [J-Link / Ozone 调试与命令邮箱](Docs/debugging.md)
+- [Ozone 七步本机分拣测试](Docs/debugging.md#seven-action-local-sorting-test)
 - [开发、构建和验证流程](Docs/development.md)
 - [编码规范](Docs/coding-style.md)
 

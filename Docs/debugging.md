@@ -394,6 +394,47 @@ movement. `.ioc` and `Core/*` remain CubeMX-owned. Review generated source and
 initialization order after the user regenerates CubeMX output; do not commit
 machine-local package paths from generated CMake files.
 
+## Seven-action local sorting test
+
+The local test runs the fixed box sequence `1, 2, 3, 4, 3, 2, 1` through the
+normal four-box sorting state machine. The next action starts 5000 ms after the
+previous action has **fully returned to Yaw/Pitch HOME**. The interval is
+measured from completion, so motion time is additional. The sequence runs once;
+it does not repeat automatically.
+
+Add `g_sort_sequence` to Ozone Watch. Edit only these two input fields:
+
+| Field | Value | Meaning |
+|---|---:|---|
+| `g_sort_sequence.enabled` | `0` or `1` | Default `0`; write `1` to start and `0` to prevent further actions. Re-arm with `0` then `1` to restart from box 1. |
+| `g_sort_sequence.interval_ms` | `1000`–`60000` | Default `5000`; may be changed while waiting. Values outside this range pause scheduling with status `INVALID_INTERVAL`. |
+
+Watch `status`, `next_index`, `completed_count`, `active_box`, `last_result`,
+and `last_completion_tick_ms`. `next_index` is zero-based. Status values are
+`DISABLED=0`, `WAIT_READY=1`, `RUNNING=2`, `WAIT_INTERVAL=3`, `COMPLETE=4`,
+`FAULT=5`, and `INVALID_INTERVAL=6`. `WAIT_READY` means the normal sorting
+readiness check has not passed. A failed action latches `FAULT`; the existing
+sorting fault cannot be cleared by toggling this test switch. Writing `0`
+while an action is running stops **future** actions; the accepted action
+continues to its normal completion or fault. `DEBUG_CMD_YAW_STOP` / `STEPPER
+STOP` remain available for a deliberate motion stop.
+
+The test requires the same mechanical and axis calibration as live four-box
+sorting. The repository defaults keep these flags unset, so writing `enabled=1`
+on an uncommissioned build leaves it at `WAIT_READY` and does not move the
+actuators. First validate the installed box angles and Pitch directions,
+configure the calibration values described in
+[the four-box protocol](K230_HC04_STM32_四盒分拣通信协议.md), establish the Yaw
+cable-neutral zero while disabled, enable Yaw, and confirm both axes are at
+HOME. Do not set a verification flag from a software build alone.
+
+This local test does not create action-history entries or emit synthetic
+`A`/`D` frames to the HC-04 peer. While `enabled=1`, new framed sort requests
+receive `N,...,BUSY`, Ready heartbeats are suppressed, and normal UART/Ozone
+motion requests are rejected except Yaw STOP. The seven box values are in
+`App/Src/sort_sequence.c`; change that array and rebuild to use another fixed
+sequence. Ozone Watch does not edit the sequence itself.
+
 ## Four-box sorting state
 
 The sorting task exposes direct ELF globals for Ozone Watch:

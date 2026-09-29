@@ -2,6 +2,7 @@
 
 #include "pitch_axis.h"
 #include "sort_task.h"
+#include "sort_sequence.h"
 #include "yaw_axis.h"
 
 #include <limits.h>
@@ -72,7 +73,8 @@ static int32_t Debug_ExecuteCommand(uint32_t command,
                                     uint32_t pitch_pulse_us,
                                     uint32_t pitch_response_time_ms)
 {
-    if (SortTask_IsBusy() && (command != DEBUG_CMD_YAW_STOP))
+    if ((SortTask_IsBusy() || SortSequence_IsEnabled()) &&
+        (command != DEBUG_CMD_YAW_STOP))
     {
         return DEBUG_RESULT_BUSY;
     }
@@ -154,7 +156,8 @@ static int32_t Debug_ExecuteCommissioningCommand(uint32_t command)
 {
     YawAxisStatus status;
 
-    if (SortTask_IsBusy() && (command != DEBUG_CMD_YAW_STOP))
+    if ((SortTask_IsBusy() || SortSequence_IsEnabled()) &&
+        (command != DEBUG_CMD_YAW_STOP))
     {
         return DEBUG_RESULT_BUSY;
     }

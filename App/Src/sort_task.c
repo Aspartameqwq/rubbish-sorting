@@ -35,6 +35,7 @@ static const SortBoxConfig_t s_box_config[4] = {
 static SortActionRecord_t s_action_history[SORT_ACTION_HISTORY_CAPACITY];
 static uint8_t s_action_history_next;
 static uint32_t s_app_health_flags;
+static bool s_local_action;
 
 static void SortTask_ChangeState(SortState_t state, uint32_t now_ms)
 {
@@ -222,6 +223,7 @@ void SortTask_Init(uint32_t app_health_flags)
     }
     s_action_history_next = 0U;
     s_app_health_flags = app_health_flags;
+    s_local_action = false;
     SortTask_UpdateTelemetry();
 }
 
@@ -276,7 +278,8 @@ static void SortTask_MarkActionCompleted(uint32_t action_id, uint8_t result)
     }
 }
 
-SortAcceptStatus_t SortTask_AcceptAction(uint32_t action_id, uint8_t box_id)
+static SortAcceptStatus_t SortTask_Accept(uint32_t action_id, uint8_t box_id,
+                                          bool local_action)
 {
     SortBoxConfig_t config;
     SortActionRecord_t previous_record;
@@ -288,7 +291,7 @@ SortAcceptStatus_t SortTask_AcceptAction(uint32_t action_id, uint8_t box_id)
     {
         return SORT_ACCEPT_BAD_BOX;
     }
-    if (SortTask_FindAction(action_id, &previous_record))
+    if (!local_action && SortTask_FindAction(action_id, &previous_record))
     {
         return SORT_ACCEPT_DUPLICATE;
     }
@@ -339,9 +342,23 @@ SortAcceptStatus_t SortTask_AcceptAction(uint32_t action_id, uint8_t box_id)
     sort_task.action_completed = false;
     sort_task.fault_code = SORT_FAULT_NONE;
     sort_task.state_enter_tick = 0U;
-    SortTask_StoreAction(action_id, box_id);
+    s_local_action = local_action;
+    if (!local_action)
+    {
+        SortTask_StoreAction(action_id, box_id);
+    }
     SortTask_UpdateTelemetry();
     return SORT_ACCEPT_ACCEPTED;
+}
+
+SortAcceptStatus_t SortTask_AcceptAction(uint32_t action_id, uint8_t box_id)
+{
+    return SortTask_Accept(action_id, box_id, false);
+}
+
+SortAcceptStatus_t SortTask_AcceptLocalAction(uint8_t box_id)
+{
+    return SortTask_Accept(0U, box_id, true);
 }
 
 void SortTask_StartAcceptedAction(uint32_t now_ms)
@@ -405,7 +422,7 @@ static void SortTask_EnterFault(SortFaultCode_t fault_code, uint32_t now_ms)
     sort_task.result = 1U;
     sort_task.action_completed = true;
     SortTask_ChangeState(SORT_STATE_FAULT, now_ms);
-    if (sort_task.action_valid)
+    if (sort_task.action_valid && !s_local_action)
     {
         SortTask_MarkActionCompleted(sort_task.action_id, 1U);
         Protocol_SendDone(sort_task.action_id, 1U);
@@ -427,8 +444,11 @@ static void SortTask_Complete(uint32_t now_ms)
 
     sort_task.result = 0U;
     sort_task.action_completed = true;
-    SortTask_MarkActionCompleted(sort_task.action_id, 0U);
-    Protocol_SendDone(sort_task.action_id, 0U);
+    if (!s_local_action)
+    {
+        SortTask_MarkActionCompleted(sort_task.action_id, 0U);
+        Protocol_SendDone(sort_task.action_id, 0U);
+    }
     sort_task.action_valid = false;
     SortTask_ChangeState(SORT_STATE_IDLE, now_ms);
     SortTask_UpdateTelemetry();

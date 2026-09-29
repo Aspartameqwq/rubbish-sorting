@@ -3,6 +3,7 @@
 #include "protocol.h"
 #include "servo.h"
 #include "sort_task.h"
+#include "sort_sequence.h"
 #include "stepper.h"
 #include "tb6600.h"
 #include "test_fakes.h"
@@ -44,6 +45,7 @@ int main(void)
     CHECK(YawAxis_Init() == YAW_AXIS_STATUS_OK);
     Protocol_Init();
     SortTask_Init(0U);
+    SortSequence_Init();
     TestFakes_SetTick(100U);
 
     CHECK(!SortTask_ConfigIsValid());
@@ -53,6 +55,12 @@ int main(void)
     CHECK(protocol_valid_frame_count == 1U);
     CHECK(strstr(TestFakes_TxData(), "$N,1,FAULT*") != NULL);
     CHECK(strstr(TestFakes_TxData(), "$R*") == NULL);
+    CHECK(sort_task.state == SORT_STATE_IDLE);
+    CHECK(!sort_task.action_valid);
+
+    g_sort_sequence.enabled = 1U;
+    SortSequence_Process(TestFakes_GetTick());
+    CHECK(g_sort_sequence.status == SORT_SEQUENCE_WAIT_READY);
     CHECK(sort_task.state == SORT_STATE_IDLE);
     CHECK(!sort_task.action_valid);
 

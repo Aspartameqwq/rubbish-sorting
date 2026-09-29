@@ -92,6 +92,7 @@ void SortTask_Process(uint32_t now_ms);
 bool SortTask_ConfigIsValid(void);
 bool SortTask_GetBoxConfig(uint8_t box_id, SortBoxConfig_t *config);
 SortAcceptStatus_t SortTask_AcceptAction(uint32_t action_id, uint8_t box_id);
+SortAcceptStatus_t SortTask_AcceptLocalAction(uint8_t box_id);
 void SortTask_StartAcceptedAction(uint32_t now_ms);
 bool SortTask_FindAction(uint32_t action_id, SortActionRecord_t *record);
 bool SortTask_IsBusy(void);

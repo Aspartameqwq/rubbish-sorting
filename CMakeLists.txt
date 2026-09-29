@@ -56,6 +56,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${STM32CUBE_F1_HAL_SOURCES}
     App/Src/app.c
     App/Src/sort_task.c
+    App/Src/sort_sequence.c
     Platform/Src/system_time.c
     BSP/Src/hc04.c
     BSP/Src/servo.c

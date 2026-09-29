@@ -7,6 +7,7 @@ set(HOST_TEST_SOURCES
     test_main.c
     stubs/fake_hal.c
     ../../App/Src/sort_task.c
+    ../../App/Src/sort_sequence.c
     ../../BSP/Src/servo.c
     ../../BSP/Src/tb6600.c
     ../../BSP/Src/tb6600_timing.c

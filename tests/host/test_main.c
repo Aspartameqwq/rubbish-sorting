@@ -5,6 +5,7 @@
 #include "project_config.h"
 #include "protocol.h"
 #include "sort_task.h"
+#include "sort_sequence.h"
 #include "servo.h"
 #include "stepper.h"
 #include "stepper_profile.h"
@@ -148,6 +149,7 @@ static void Test_InitializeModules(void)
     CHECK(YawAxis_Init() == YAW_AXIS_STATUS_OK);
     Protocol_Init();
     SortTask_Init(0U);
+    SortSequence_Init();
     Debug_Init();
     TestFakes_ResetUart();
     TestFakes_SetTick(100U);
@@ -1555,6 +1557,144 @@ static void Test_SortPitchTimeout(void)
     Test_ExpectSortFrame("D,90,1");
 }
 
+static void Test_CompleteLocalSortAction(void)
+{
+    uint32_t guard;
+
+    for (guard = 0U; guard < 100U; guard++)
+    {
+        uint32_t now_ms = TestFakes_GetTick();
+        SortTask_Process(now_ms);
+        if (sort_task.state == SORT_STATE_IDLE)
+        {
+            return;
+        }
+        switch (sort_task.state)
+        {
+            case SORT_STATE_YAW_WAIT:
+            case SORT_STATE_YAW_RETURN_WAIT:
+                Test_CompleteYawMove();
+                break;
+            case SORT_STATE_PITCH_DUMP_WAIT:
+            case SORT_STATE_PITCH_RETURN_WAIT:
+                now_ms += PitchAxis_GetActiveResponseTimeMs();
+                TestFakes_SetTick(now_ms);
+                PitchAxis_Process(now_ms);
+                break;
+            case SORT_STATE_DUMP_HOLD:
+                TestFakes_SetTick(sort_task.state_enter_tick + SORT_DUMP_HOLD_MS);
+                break;
+            case SORT_STATE_FAULT:
+                CHECK(false);
+                return;
+            default:
+                break;
+        }
+    }
+    CHECK(false);
+}
+
+static void Test_LocalSortSequence(void)
+{
+    static const uint8_t expected_boxes[SORT_SEQUENCE_LENGTH] =
+        {1U, 2U, 3U, 4U, 3U, 2U, 1U};
+    uint32_t index;
+    uint32_t completed_at;
+    uint32_t interval_ms;
+
+    Test_InitSortFixture();
+    CHECK(g_sort_sequence.enabled == 0U);
+    CHECK(g_sort_sequence.interval_ms == 5000U);
+    g_sort_sequence.interval_ms = 999U;
+    g_sort_sequence.enabled = 1U;
+    SortSequence_Process(TestFakes_GetTick());
+    CHECK(g_sort_sequence.status == SORT_SEQUENCE_INVALID_INTERVAL);
+    CHECK(sort_task.state == SORT_STATE_IDLE);
+
+    g_sort_sequence.interval_ms = 5000U;
+    Protocol_Process();
+    CHECK(TestFakes_TxData()[0] == '\0');
+
+    for (index = 0U; index < SORT_SEQUENCE_LENGTH; index++)
+    {
+        SortSequence_Process(TestFakes_GetTick());
+        CHECK(g_sort_sequence.status == SORT_SEQUENCE_RUNNING);
+        CHECK(g_sort_sequence.active_box == expected_boxes[index]);
+        CHECK(sort_task.box == expected_boxes[index]);
+        CHECK(sort_task.action_id == 0U);
+        if (index == 0U)
+        {
+            Test_FeedSortFrame("S,42,3");
+            Protocol_Process();
+            Test_ExpectSortFrame("N,42,BUSY");
+            TestFakes_ClearTx();
+        }
+        Test_CompleteLocalSortAction();
+        CHECK(sort_task.result == 0U);
+        SortSequence_Process(TestFakes_GetTick());
+        CHECK(g_sort_sequence.completed_count == index + 1U);
+        CHECK(TestFakes_TxData()[0] == '\0');
+        if (index + 1U < SORT_SEQUENCE_LENGTH)
+        {
+            CHECK(g_sort_sequence.status == SORT_SEQUENCE_WAIT_INTERVAL);
+            if (index == 0U)
+            {
+                TestFakes_FeedUart("PITCH 5000\n");
+                Protocol_Process();
+                CHECK(strstr(TestFakes_TxData(), "ERR\r\n") != NULL);
+                TestFakes_ClearTx();
+            }
+            completed_at = TestFakes_GetTick();
+            interval_ms = (index == 0U) ? 1000U : 5000U;
+            g_sort_sequence.interval_ms = interval_ms;
+            TestFakes_SetTick(completed_at + interval_ms - 1U);
+            SortSequence_Process(TestFakes_GetTick());
+            CHECK(sort_task.state == SORT_STATE_IDLE);
+            TestFakes_SetTick(completed_at + interval_ms);
+        }
+    }
+    CHECK(g_sort_sequence.status == SORT_SEQUENCE_COMPLETE);
+    CHECK(g_sort_sequence.next_index == SORT_SEQUENCE_LENGTH);
+    SortSequence_Process(TestFakes_GetTick() + 5000U);
+    CHECK(g_sort_sequence.status == SORT_SEQUENCE_COMPLETE);
+
+    g_sort_sequence.enabled = 0U;
+    SortSequence_Process(TestFakes_GetTick());
+    CHECK(g_sort_sequence.status == SORT_SEQUENCE_DISABLED);
+    CHECK(g_sort_sequence.next_index == 0U);
+    g_sort_sequence.enabled = 1U;
+    SortSequence_Process(TestFakes_GetTick());
+    CHECK(g_sort_sequence.active_box == 1U);
+    g_sort_sequence.enabled = 0U;
+    SortSequence_Process(TestFakes_GetTick());
+    Test_CompleteLocalSortAction();
+    SortSequence_Process(TestFakes_GetTick());
+    CHECK(g_sort_sequence.status == SORT_SEQUENCE_DISABLED);
+    CHECK(g_sort_sequence.completed_count == 0U);
+}
+
+static void Test_LocalSortSequenceFault(void)
+{
+    uint32_t now_ms;
+
+    Test_InitSortFixture();
+    g_sort_sequence.enabled = 1U;
+    SortSequence_Process(TestFakes_GetTick());
+    CHECK(g_sort_sequence.status == SORT_SEQUENCE_RUNNING);
+    SortTask_Process(TestFakes_GetTick());
+    CHECK(sort_task.state == SORT_STATE_YAW_WAIT);
+    now_ms = TestFakes_GetTick() + SORT_YAW_MOVE_TIMEOUT_MS;
+    TestFakes_SetTick(now_ms);
+    SortTask_Process(now_ms);
+    CHECK(sort_task.state == SORT_STATE_FAULT);
+    SortSequence_Process(now_ms);
+    CHECK(g_sort_sequence.status == SORT_SEQUENCE_FAULT);
+    CHECK(g_sort_sequence.completed_count == 0U);
+    CHECK(TestFakes_TxData()[0] == '\0');
+    SortSequence_Process(now_ms + 60000U);
+    CHECK(g_sort_sequence.status == SORT_SEQUENCE_FAULT);
+}
+
 int main(void)
 {
     Test_TimingConversion();
@@ -1575,6 +1715,8 @@ int main(void)
     Test_DebugTelemetryAndMailbox();
     Test_SortProtocolAndStateMachine();
     Test_SortPitchTimeout();
+    Test_LocalSortSequence();
+    Test_LocalSortSequenceFault();
 
     (void)printf("%u checks, %u failures\n", s_checks, s_failures);
     return (s_failures == 0U) ? 0 : 1;

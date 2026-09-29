@@ -38,8 +38,6 @@ function(configure_host_test_target target debug_control_enabled raw_bench_enabl
         DEBUG_CONTROL_ENABLE=${debug_control_enabled}
         RAW_BENCH_COMMANDS_ENABLE=${raw_bench_enabled}
         SORT_MECHANICAL_CALIBRATION_COMPLETE=1
-        SORT_YAW_GROUP_13_MDEG=-45000L
-        SORT_YAW_GROUP_24_MDEG=90000L
         SORT_PITCH_DUMP_ANGLE_MDEG=15000L
         SORT_BOX1_PITCH_DIRECTION=1
         SORT_BOX2_PITCH_DIRECTION=-1

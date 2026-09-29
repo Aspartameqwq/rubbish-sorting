@@ -401,7 +401,9 @@ machine-local package paths from generated CMake files.
 The local test runs the fixed box sequence `2, 1, 3, 4, 2, 3, 1` through the
 normal four-box sorting state machine. Boxes 1, 2, and 3 occur twice; box 4
 occurs once in the middle, which is the closest possible balance in seven
-actions. The next action starts 5000 ms after the
+actions. Boxes 1/3 use the proposed Yaw +45° target and opposite Pitch
+directions; boxes 2/4 use Yaw -45° and opposite Pitch directions. The next
+action starts 5000 ms after the
 previous action has **fully returned to Yaw/Pitch HOME**. The interval is
 measured from completion, so motion time is additional. The sequence runs once;
 it does not repeat automatically.

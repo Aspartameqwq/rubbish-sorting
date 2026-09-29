@@ -1406,6 +1406,10 @@ static void Test_SortProtocolAndStateMachine(void)
     CHECK(box2.pitch_direction == (PitchDumpDirection_t)(-box4.pitch_direction));
     CHECK(box1.yaw_target_mdeg == SORT_YAW_GROUP_13_MDEG);
     CHECK(box2.yaw_target_mdeg == SORT_YAW_GROUP_24_MDEG);
+    CHECK(box1.yaw_target_mdeg == 45000L);
+    CHECK(box2.yaw_target_mdeg == -45000L);
+    CHECK(box3.yaw_target_mdeg == 45000L);
+    CHECK(box4.yaw_target_mdeg == -45000L);
 
     Protocol_Process();
     Test_ExpectSortFrame("R");

@@ -10,8 +10,9 @@ Every sorting response uses the same frame envelope: `$A,action_id*CC\n`,
 the CRC characters, and LF are excluded. Framed messages require LF and reject
 CR. A known CRC regression vector is `$S,42,3*6C\n`.
 
-For example, `$S,105,3*<CRC>\n` selects Box 3. Boxes 1/3 share
-`SORT_YAW_GROUP_13_MDEG`; boxes 2/4 share `SORT_YAW_GROUP_24_MDEG`. Each box's
+For example, `$S,105,3*<CRC>\n` selects Box 3. Boxes 1/3 share the proposed
+`SORT_YAW_GROUP_13_MDEG=+45000`; boxes 2/4 share
+`SORT_YAW_GROUP_24_MDEG=-45000`. Each box's
 Pitch direction is configured independently, and each paired direction must
 be opposite. `ID_CONFLICT` means a retained action ID was received with a
 different box. The STM32 rejects it without changing the original action.

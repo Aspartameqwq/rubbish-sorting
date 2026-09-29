@@ -13,6 +13,7 @@ STM32F103C8T6 下位机工程，使用 STM32CubeMX 6.12.0、STM32CubeF1 HAL v1.8
 - Yaw cable-wrap 软件命令范围当前设为 ±180°，但它依赖人工 cable-neutral 零点、开环脉冲计数和未验证的轴比例；不是传感器或已验证机械限位。实际线缆余量较小时必须收紧角度参数。Pitch 软件范围同样只是命令保护，不是机械限位或实体验证。
 - Ozone 使用单一全局对象 `g_control_debug` 暴露遥测、运行期 Pitch 响应时间调节和单请求邮箱；Debug 提供完整调试/bench 命令，Release 只保留 Yaw 设零、使能、禁用和停止的分拣调试命令，并拒绝普通 bench 运动命令。
 - HC-04、命令解析、TB6600 BSP、有限步数 Stepper、整数 profile foundation 和 App health 状态已实现。
+- 四盒候选布局按右上 1 号、逆时针编号：1/3 共用 Yaw +45°，2/4 共用 Yaw -45°，同组由 Pitch 正负方向区分。Pitch 倾倒参数仍待实机标定，默认分拣门槛保持关闭。
 - host 软件测试、ARM Debug/Release 构建和硬件验证状态以当前分支 CI/开发记录为准；未接实物时不得声称硬件通过。
 - TB6600 项目已选择 STM32 3.3 V GPIO 共阴直连，8 细分（每电机轴圈 1600 PUL）及 1.5 A 面板电流档；Yaw 输出轴使用 1600 PUL/rev 的 1:1 传动假设。12 V 台架已验证 ENA 低电平使能、正反向各 100 PUL 的实际转动和回位；20 PUL/s 抖动明显，50 和 100 PUL/s 逐渐平稳。实际 DIP、输入电流、波形、机械比例和准确平台角度仍待测量。完整接线见 [Docs/wiring.md](Docs/wiring.md)。
 - Servo 500–2500 µs 参考映射已按用户提供参数配置，148° 水平锚点已由用户实物确认；HC-04 115200 baud 已在带电 Yaw 测试中持续以 `PING`/`PONG` 验证，TB6600 10 µs 脉冲宽度和方向建立时间仍需实物验证。

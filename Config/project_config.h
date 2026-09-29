@@ -24,22 +24,23 @@
  * ========================= */
 
 /*
- * Mechanical angles and Pitch directions are deliberately uncommissioned.
- * Set these only after measuring the installed mechanism, then set
- * SORT_MECHANICAL_CALIBRATION_COMPLETE to 1. Sorting commands are rejected
- * while the flag is 0.
+ * Yaw groups follow the proposed box layout with 0 degrees pointing forward:
+ * 1/3 share +45 degrees and 2/4 share -45 degrees. Pitch direction selects
+ * the front or rear box in each group. Check the installed geometry, Pitch
+ * directions and clearances before completing mechanical calibration.
+ * Sorting commands remain rejected while the calibration flag is 0.
  */
 #ifndef SORT_MECHANICAL_CALIBRATION_COMPLETE
 #define SORT_MECHANICAL_CALIBRATION_COMPLETE 0U
 #endif
 #ifndef SORT_YAW_GROUP_13_MDEG
-#define SORT_YAW_GROUP_13_MDEG               0L
+#define SORT_YAW_GROUP_13_MDEG               45000L
 #endif
 #ifndef SORT_YAW_HOME_MDEG
 #define SORT_YAW_HOME_MDEG                   0L
 #endif
 #ifndef SORT_YAW_GROUP_24_MDEG
-#define SORT_YAW_GROUP_24_MDEG               0L
+#define SORT_YAW_GROUP_24_MDEG               (-45000L)
 #endif
 #ifndef SORT_PITCH_HOME_MDEG
 #define SORT_PITCH_HOME_MDEG                 0L

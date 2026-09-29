@@ -10,11 +10,10 @@ Every sorting response uses the same frame envelope: `$A,action_id*CC\n`,
 the CRC characters, and LF are excluded. Framed messages require LF and reject
 CR. A known CRC regression vector is `$S,42,3*6C\n`.
 
-For example, `$S,105,3*<CRC>\n` selects Box 3. Boxes 1/3 share the proposed
-`SORT_YAW_GROUP_13_MDEG=+45000`; boxes 2/4 share
-`SORT_YAW_GROUP_24_MDEG=-45000`. Each box's
-Pitch direction is configured independently, and each paired direction must
-be opposite. `ID_CONFLICT` means a retained action ID was received with a
+For example, `$S,105,3*<CRC>\n` selects Box 3. In the supervised integration
+layout, boxes 1/2/3/4 command Yaw +45°/-45°/-135°/+135°, respectively; all
+four command Pitch -45° to dump in the same direction. `ID_CONFLICT` means
+a retained action ID was received with a
 different box. The STM32 rejects it without changing the original action.
 The K230 peer must discard that conflicting request, re-identify after the
 next safe Ready indication, and use a new action ID. This repository changes
@@ -22,9 +21,11 @@ only STM32 firmware; the peer behavior is a protocol contract.
 
 See [K230_HC04_STM32_四盒分拣通信协议.md](K230_HC04_STM32_四盒分拣通信协议.md)
 for the state sequence, commissioning values, timeouts, history behavior,
-and debug symbols. Sorting remains disabled while the mechanical calibration
-flag and axis calibration flags are unset, so no `R` is sent in the default
-uncommissioned build.
+and debug symbols. Release sorting remains disabled while the mechanical and
+axis calibration flags are unset. The Debug firmware enables supervised
+integration with `SORT_COMMISSIONING_TEST_ENABLE=1`; this permits provisional
+targets without claiming physical calibration. It still requires Yaw enabled
+and referenced, both axes HOME, and no fault before sending `R`.
 
 An Ozone-controlled, fixed seven-action local test is described in
 [debugging.md](debugging.md#seven-action-local-sorting-test). While it is

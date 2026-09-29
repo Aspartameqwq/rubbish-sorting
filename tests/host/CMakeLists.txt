@@ -38,11 +38,11 @@ function(configure_host_test_target target debug_control_enabled raw_bench_enabl
         DEBUG_CONTROL_ENABLE=${debug_control_enabled}
         RAW_BENCH_COMMANDS_ENABLE=${raw_bench_enabled}
         SORT_MECHANICAL_CALIBRATION_COMPLETE=1
-        SORT_PITCH_DUMP_ANGLE_MDEG=15000L
-        SORT_BOX1_PITCH_DIRECTION=1
+        SORT_PITCH_DUMP_ANGLE_MDEG=45000L
+        SORT_BOX1_PITCH_DIRECTION=-1
         SORT_BOX2_PITCH_DIRECTION=-1
         SORT_BOX3_PITCH_DIRECTION=-1
-        SORT_BOX4_PITCH_DIRECTION=1
+        SORT_BOX4_PITCH_DIRECTION=-1
         SERVO_CALIBRATION_VALID=1
         YAW_AXIS_SCALE_VERIFIED=1
     )
@@ -93,3 +93,26 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(firmware_sort_unconfigured_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
 add_test(NAME firmware_sort_unconfigured_tests COMMAND firmware_sort_unconfigured_tests)
+
+add_executable(firmware_sort_commissioning_tests ${SORT_UNCONFIGURED_SOURCES})
+target_include_directories(firmware_sort_commissioning_tests PRIVATE
+    stubs
+    ../../App/Inc
+    ../../BSP/Inc
+    ../../Config
+    ../../Control/Inc
+    ../../Diagnostics/Inc
+    ../../Motion/Inc
+    ../../Platform/Inc
+    ../../Protocol/Inc
+)
+target_compile_features(firmware_sort_commissioning_tests PRIVATE c_std_11)
+target_compile_definitions(firmware_sort_commissioning_tests PRIVATE
+    DEBUG_CONTROL_ENABLE=1
+    RAW_BENCH_COMMANDS_ENABLE=1
+    SORT_COMMISSIONING_TEST_ENABLE=1
+)
+if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(firmware_sort_commissioning_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+add_test(NAME firmware_sort_commissioning_tests COMMAND firmware_sort_commissioning_tests)

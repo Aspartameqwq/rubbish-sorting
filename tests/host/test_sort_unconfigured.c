@@ -46,6 +46,23 @@ int main(void)
     CHECK(YawAxis_GetReferenceState() == YAW_REFERENCE_STARTUP_ASSUMED);
     CHECK(YawAxis_GetCommandedMilliDeg() == 0);
     CHECK(!YawAxis_IsEnabled());
+#if (SORT_COMMISSIONING_TEST_ENABLE == 1U)
+    CHECK(!PitchAxis_IsCalibrationValid());
+    CHECK(SortTask_ConfigIsValid());
+    CHECK(!SortTask_IsReady());
+    CHECK(YawAxis_Enable() == YAW_AXIS_STATUS_OK);
+    CHECK(SortTask_IsReady());
+    Protocol_Process();
+    CHECK(strstr(TestFakes_TxData(), "$R*") != NULL);
+    TestFakes_ClearTx();
+    FeedFrame("S,1,1");
+    Protocol_Process();
+    CHECK(protocol_valid_frame_count == 1U);
+    CHECK(strstr(TestFakes_TxData(), "$A,1*") != NULL);
+    CHECK(sort_task.state == SORT_STATE_YAW_MOVE);
+    CHECK(sort_task.yaw_target_mdeg == 45000L);
+    CHECK(sort_task.pitch_target_mdeg == -45000L);
+#else
     CHECK(!SortTask_ConfigIsValid());
     CHECK(SortTask_AcceptAction(1U, 1U) == SORT_ACCEPT_FAULT);
     FeedFrame("S,1,1");
@@ -61,6 +78,7 @@ int main(void)
     CHECK(g_sort_sequence.status == SORT_SEQUENCE_WAIT_READY);
     CHECK(sort_task.state == SORT_STATE_IDLE);
     CHECK(!sort_task.action_valid);
+#endif
 
     (void)printf("%u checks, %u failures\n", s_checks, s_failures);
     return (s_failures == 0U) ? 0 : 1;

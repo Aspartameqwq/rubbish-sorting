@@ -24,41 +24,50 @@
  * ========================= */
 
 /*
- * Yaw groups follow the proposed box layout with 0 degrees pointing forward:
- * 1/3 share +45 degrees and 2/4 share -45 degrees. Pitch direction selects
- * the front or rear box in each group. Check the installed geometry, Pitch
- * directions and clearances before completing mechanical calibration.
- * Sorting commands remain rejected while the calibration flag is 0.
+ * Supervised four-position integration layout, with Yaw 0 facing forward:
+ * box 1 = +45, box 2 = -45, box 3 = -135, box 4 = +135 degrees.
+ * All boxes dump at Pitch -45 degrees. Production sorting still
+ * requires measured mechanical and axis calibration.
  */
 #ifndef SORT_MECHANICAL_CALIBRATION_COMPLETE
 #define SORT_MECHANICAL_CALIBRATION_COMPLETE 0U
 #endif
-#ifndef SORT_YAW_GROUP_13_MDEG
-#define SORT_YAW_GROUP_13_MDEG               45000L
+/* Supervised Debug integration only; does not mark physical calibration complete. */
+#ifndef SORT_COMMISSIONING_TEST_ENABLE
+#define SORT_COMMISSIONING_TEST_ENABLE       0U
+#endif
+#ifndef SORT_BOX1_YAW_TARGET_MDEG
+#define SORT_BOX1_YAW_TARGET_MDEG            45000L
 #endif
 #ifndef SORT_YAW_HOME_MDEG
 #define SORT_YAW_HOME_MDEG                   0L
 #endif
-#ifndef SORT_YAW_GROUP_24_MDEG
-#define SORT_YAW_GROUP_24_MDEG               (-45000L)
+#ifndef SORT_BOX2_YAW_TARGET_MDEG
+#define SORT_BOX2_YAW_TARGET_MDEG            (-45000L)
+#endif
+#ifndef SORT_BOX3_YAW_TARGET_MDEG
+#define SORT_BOX3_YAW_TARGET_MDEG            (-135000L)
+#endif
+#ifndef SORT_BOX4_YAW_TARGET_MDEG
+#define SORT_BOX4_YAW_TARGET_MDEG            135000L
 #endif
 #ifndef SORT_PITCH_HOME_MDEG
 #define SORT_PITCH_HOME_MDEG                 0L
 #endif
 #ifndef SORT_PITCH_DUMP_ANGLE_MDEG
-#define SORT_PITCH_DUMP_ANGLE_MDEG           0L
+#define SORT_PITCH_DUMP_ANGLE_MDEG           45000L
 #endif
 #ifndef SORT_BOX1_PITCH_DIRECTION
-#define SORT_BOX1_PITCH_DIRECTION             0
+#define SORT_BOX1_PITCH_DIRECTION             -1
 #endif
 #ifndef SORT_BOX2_PITCH_DIRECTION
-#define SORT_BOX2_PITCH_DIRECTION             0
+#define SORT_BOX2_PITCH_DIRECTION             -1
 #endif
 #ifndef SORT_BOX3_PITCH_DIRECTION
-#define SORT_BOX3_PITCH_DIRECTION             0
+#define SORT_BOX3_PITCH_DIRECTION             -1
 #endif
 #ifndef SORT_BOX4_PITCH_DIRECTION
-#define SORT_BOX4_PITCH_DIRECTION             0
+#define SORT_BOX4_PITCH_DIRECTION             -1
 #endif
 
 #ifndef SORT_YAW_STEP_FREQUENCY_HZ

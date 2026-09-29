@@ -1400,16 +1400,19 @@ static void Test_SortProtocolAndStateMachine(void)
     CHECK(SortTask_GetBoxConfig(2U, &box2));
     CHECK(SortTask_GetBoxConfig(3U, &box3));
     CHECK(SortTask_GetBoxConfig(4U, &box4));
-    CHECK(box1.yaw_target_mdeg == box3.yaw_target_mdeg);
-    CHECK(box2.yaw_target_mdeg == box4.yaw_target_mdeg);
-    CHECK(box1.pitch_direction == (PitchDumpDirection_t)(-box3.pitch_direction));
-    CHECK(box2.pitch_direction == (PitchDumpDirection_t)(-box4.pitch_direction));
-    CHECK(box1.yaw_target_mdeg == SORT_YAW_GROUP_13_MDEG);
-    CHECK(box2.yaw_target_mdeg == SORT_YAW_GROUP_24_MDEG);
+    CHECK(box1.pitch_direction == PITCH_DUMP_NEGATIVE);
+    CHECK(box2.pitch_direction == PITCH_DUMP_NEGATIVE);
+    CHECK(box3.pitch_direction == PITCH_DUMP_NEGATIVE);
+    CHECK(box4.pitch_direction == PITCH_DUMP_NEGATIVE);
+    CHECK(SORT_PITCH_DUMP_ANGLE_MDEG == 45000L);
+    CHECK(box1.yaw_target_mdeg == SORT_BOX1_YAW_TARGET_MDEG);
+    CHECK(box2.yaw_target_mdeg == SORT_BOX2_YAW_TARGET_MDEG);
+    CHECK(box3.yaw_target_mdeg == SORT_BOX3_YAW_TARGET_MDEG);
+    CHECK(box4.yaw_target_mdeg == SORT_BOX4_YAW_TARGET_MDEG);
     CHECK(box1.yaw_target_mdeg == 45000L);
     CHECK(box2.yaw_target_mdeg == -45000L);
-    CHECK(box3.yaw_target_mdeg == 45000L);
-    CHECK(box4.yaw_target_mdeg == -45000L);
+    CHECK(box3.yaw_target_mdeg == -135000L);
+    CHECK(box4.yaw_target_mdeg == 135000L);
 
     Protocol_Process();
     Test_ExpectSortFrame("R");
@@ -1462,8 +1465,8 @@ static void Test_SortProtocolAndStateMachine(void)
 
     SortTask_Process(now_ms);
     CHECK(sort_task.state == SORT_STATE_YAW_WAIT);
-    CHECK(sort_task.yaw_target_mdeg == SORT_YAW_GROUP_13_MDEG);
-    CHECK(YawAxis_GetTargetMilliDeg() == SORT_YAW_GROUP_13_MDEG);
+    CHECK(sort_task.yaw_target_mdeg == SORT_BOX3_YAW_TARGET_MDEG);
+    CHECK(YawAxis_GetTargetMilliDeg() == SORT_BOX3_YAW_TARGET_MDEG);
     Test_CompleteYawMove();
 
     SortTask_Process(TestFakes_GetTick());
@@ -1499,7 +1502,7 @@ static void Test_SortProtocolAndStateMachine(void)
     CHECK(sort_task.state == SORT_STATE_PITCH_RETURN);
     SortTask_Process(now_ms);
     CHECK(sort_task.state == SORT_STATE_PITCH_RETURN_WAIT);
-    CHECK(YawAxis_GetTargetMilliDeg() == SORT_YAW_GROUP_13_MDEG);
+    CHECK(YawAxis_GetTargetMilliDeg() == SORT_BOX3_YAW_TARGET_MDEG);
 
     now_ms += PitchAxis_GetActiveResponseTimeMs();
     TestFakes_SetTick(now_ms);
@@ -1507,7 +1510,7 @@ static void Test_SortProtocolAndStateMachine(void)
     SortTask_Process(now_ms);
     CHECK(sort_task.state == SORT_STATE_YAW_RETURN);
     CHECK(PitchAxis_GetCommandedMilliDeg() == 0);
-    CHECK(YawAxis_GetTargetMilliDeg() == SORT_YAW_GROUP_13_MDEG);
+    CHECK(YawAxis_GetTargetMilliDeg() == SORT_BOX3_YAW_TARGET_MDEG);
     SortTask_Process(now_ms);
     CHECK(sort_task.state == SORT_STATE_YAW_RETURN_WAIT);
     CHECK(YawAxis_GetTargetMilliDeg() == 0);
@@ -1622,6 +1625,8 @@ static void Test_LocalSortSequence(void)
 {
     static const uint8_t expected_boxes[SORT_SEQUENCE_LENGTH] =
         {2U, 1U, 3U, 4U, 2U, 3U, 1U};
+    static const int32_t expected_yaw_mdeg[SORT_SEQUENCE_LENGTH] =
+        {-45000L, 45000L, -135000L, 135000L, -45000L, -135000L, 45000L};
     uint32_t index;
     uint32_t completed_at;
     uint32_t interval_ms;
@@ -1646,6 +1651,8 @@ static void Test_LocalSortSequence(void)
         CHECK(g_sort_sequence.active_box == expected_boxes[index]);
         CHECK(sort_task.box == expected_boxes[index]);
         CHECK(sort_task.action_id == 0U);
+        CHECK(sort_task.yaw_target_mdeg == expected_yaw_mdeg[index]);
+        CHECK(sort_task.pitch_target_mdeg == -45000L);
         if (index == 0U)
         {
             Test_FeedSortFrame("S,42,3");

@@ -401,8 +401,9 @@ machine-local package paths from generated CMake files.
 The local test runs the fixed box sequence `2, 1, 3, 4, 2, 3, 1` through the
 normal four-box sorting state machine. Boxes 1, 2, and 3 occur twice; box 4
 occurs once in the middle, which is the closest possible balance in seven
-actions. Boxes 1/3 use the proposed Yaw +45° target and opposite Pitch
-directions; boxes 2/4 use Yaw -45° and opposite Pitch directions. The next
+actions. In the current supervised Debug layout, boxes 1/2/3/4 target Yaw
++45°/-45°/-135°/+135°, respectively, and all four dump with Pitch -45°.
+The next
 action starts 5000 ms after the
 previous action has **fully returned to Yaw/Pitch HOME**. The interval is
 measured from completion, so motion time is additional. The sequence runs once;
@@ -425,14 +426,14 @@ while an action is running stops **future** actions; the accepted action
 continues to its normal completion or fault. `DEBUG_CMD_YAW_STOP` / `STEPPER
 STOP` remain available for a deliberate motion stop.
 
-The test requires the same mechanical and axis calibration as live four-box
-sorting. The repository defaults keep these flags unset, so writing `enabled=1`
-on an uncommissioned build leaves it at `WAIT_READY` and does not move the
-actuators. First validate the installed box angles and Pitch directions,
-configure the calibration values described in
-[the four-box protocol](K230_HC04_STM32_四盒分拣通信协议.md), place Yaw at cable
-neutral before power-up or manually reset zero while disabled, enable Yaw, and confirm both axes are at
-HOME. Do not set a verification flag from a software build alone.
+The Debug firmware enables `SORT_COMMISSIONING_TEST_ENABLE=1` for supervised
+integration. This bypasses only the unverified calibration flags; target
+limits, timing, faults, Yaw reference/enable, and both axes' HOME checks still
+apply to this sequence and K230 requests. Place Yaw at cable neutral before
+power-up or manually reset zero while disabled, enable Yaw, and confirm both
+axes are at HOME. Release still requires full physical calibration and does
+not enable commissioning mode. Details are in
+[the four-box protocol](K230_HC04_STM32_四盒分拣通信协议.md).
 
 This local test does not create action-history entries or emit synthetic
 `A`/`D` frames to the HC-04 peer. While `enabled=1`, new framed sort requests

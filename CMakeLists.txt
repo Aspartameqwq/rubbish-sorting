@@ -92,6 +92,7 @@ target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
     $<$<NOT:$<CONFIG:Debug>>:DEBUG_CONTROL_ENABLE=0>
     $<$<CONFIG:Debug>:RAW_BENCH_COMMANDS_ENABLE=1>
     $<$<NOT:$<CONFIG:Debug>>:RAW_BENCH_COMMANDS_ENABLE=0>
+    $<$<CONFIG:Debug>:SORT_COMMISSIONING_TEST_ENABLE=1>
 )
 
 # Add linked libraries.

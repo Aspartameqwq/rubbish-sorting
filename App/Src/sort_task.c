@@ -18,6 +18,13 @@
     (SORT_MECHANICAL_CALIBRATION_COMPLETE != 1U)
 #error "SORT_MECHANICAL_CALIBRATION_COMPLETE must be 0 or 1"
 #endif
+#if (SORT_COMMISSIONING_TEST_ENABLE != 0U) && \
+    (SORT_COMMISSIONING_TEST_ENABLE != 1U)
+#error "SORT_COMMISSIONING_TEST_ENABLE must be 0 or 1"
+#endif
+#if (SORT_COMMISSIONING_TEST_ENABLE == 1U) && (DEBUG_CONTROL_ENABLE != 1)
+#error "Supervised sorting commissioning requires a Debug control build"
+#endif
 
 volatile SortTask_t sort_task;
 volatile uint8_t system_fault;
@@ -27,10 +34,10 @@ volatile uint8_t pitch_is_home;
 volatile uint8_t pitch_is_at_target;
 
 static const SortBoxConfig_t s_box_config[4] = {
-    {1U, SORT_YAW_GROUP_13_MDEG, (PitchDumpDirection_t)SORT_BOX1_PITCH_DIRECTION},
-    {2U, SORT_YAW_GROUP_24_MDEG, (PitchDumpDirection_t)SORT_BOX2_PITCH_DIRECTION},
-    {3U, SORT_YAW_GROUP_13_MDEG, (PitchDumpDirection_t)SORT_BOX3_PITCH_DIRECTION},
-    {4U, SORT_YAW_GROUP_24_MDEG, (PitchDumpDirection_t)SORT_BOX4_PITCH_DIRECTION}};
+    {1U, SORT_BOX1_YAW_TARGET_MDEG, (PitchDumpDirection_t)SORT_BOX1_PITCH_DIRECTION},
+    {2U, SORT_BOX2_YAW_TARGET_MDEG, (PitchDumpDirection_t)SORT_BOX2_PITCH_DIRECTION},
+    {3U, SORT_BOX3_YAW_TARGET_MDEG, (PitchDumpDirection_t)SORT_BOX3_PITCH_DIRECTION},
+    {4U, SORT_BOX4_YAW_TARGET_MDEG, (PitchDumpDirection_t)SORT_BOX4_PITCH_DIRECTION}};
 
 static SortActionRecord_t s_action_history[SORT_ACTION_HISTORY_CAPACITY];
 static uint8_t s_action_history_next;
@@ -62,17 +69,13 @@ bool SortTask_GetBoxConfig(uint8_t box_id, SortBoxConfig_t *config)
 bool SortTask_ConfigIsValid(void)
 {
     uint8_t index;
-    int64_t yaw_group_13_mdeg;
-    int64_t yaw_group_24_mdeg;
-    uint64_t max_yaw_angle_mdeg;
+    uint64_t max_yaw_angle_mdeg = 0U;
     uint64_t max_yaw_pulses;
     uint64_t minimum_yaw_timeout_ms;
 
-    if (SORT_MECHANICAL_CALIBRATION_COMPLETE != 1U)
-    {
-        return false;
-    }
-    if (!PitchAxis_IsCalibrationValid() || (YAW_AXIS_SCALE_VERIFIED == 0U))
+    if ((SORT_COMMISSIONING_TEST_ENABLE != 1U) &&
+        ((SORT_MECHANICAL_CALIBRATION_COMPLETE != 1U) ||
+         !PitchAxis_IsCalibrationValid() || (YAW_AXIS_SCALE_VERIFIED == 0U)))
     {
         return false;
     }
@@ -96,16 +99,10 @@ bool SortTask_ConfigIsValid(void)
     {
         return false;
     }
-    if ((s_box_config[0].pitch_direction !=
-         (PitchDumpDirection_t)(-s_box_config[2].pitch_direction)) ||
-        (s_box_config[1].pitch_direction !=
-         (PitchDumpDirection_t)(-s_box_config[3].pitch_direction)))
-    {
-        return false;
-    }
-
     for (index = 0U; index < 4U; index++)
     {
+        int64_t yaw_angle_mdeg;
+
         if ((s_box_config[index].box_id != (uint8_t)(index + 1U)) ||
             !SortTask_IsDirectionValid(s_box_config[index].pitch_direction) ||
             (s_box_config[index].yaw_target_mdeg < YAW_CABLE_LIMIT_MIN_MDEG) ||
@@ -113,21 +110,16 @@ bool SortTask_ConfigIsValid(void)
         {
             return false;
         }
+        yaw_angle_mdeg = s_box_config[index].yaw_target_mdeg;
+        if (yaw_angle_mdeg < 0)
+        {
+            yaw_angle_mdeg = -yaw_angle_mdeg;
+        }
+        if ((uint64_t)yaw_angle_mdeg > max_yaw_angle_mdeg)
+        {
+            max_yaw_angle_mdeg = (uint64_t)yaw_angle_mdeg;
+        }
     }
-
-    yaw_group_13_mdeg = SORT_YAW_GROUP_13_MDEG;
-    yaw_group_24_mdeg = SORT_YAW_GROUP_24_MDEG;
-    if (yaw_group_13_mdeg < 0)
-    {
-        yaw_group_13_mdeg = -yaw_group_13_mdeg;
-    }
-    if (yaw_group_24_mdeg < 0)
-    {
-        yaw_group_24_mdeg = -yaw_group_24_mdeg;
-    }
-    max_yaw_angle_mdeg = (uint64_t)((yaw_group_13_mdeg > yaw_group_24_mdeg)
-                                        ? yaw_group_13_mdeg
-                                        : yaw_group_24_mdeg);
     max_yaw_pulses = (max_yaw_angle_mdeg * YAW_AXIS_PULSES_PER_REV +
                       (uint64_t)ANGLE_MDEG_PER_REV - 1U) /
                      (uint64_t)ANGLE_MDEG_PER_REV;
